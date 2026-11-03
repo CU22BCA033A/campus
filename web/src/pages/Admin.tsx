@@ -1,0 +1,132 @@
+import { useState } from 'react'
+import { Download, Plus, Search } from 'lucide-react'
+import { switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
+import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
+import { attendanceStats, inr } from '../lib'
+import type { Role, User } from '../data/types'
+import { useNavigate } from 'react-router-dom'
+
+export function AdminUsers() {
+  const db = useDB()
+  const me = useCurrentUser()!
+  const navigate = useNavigate()
+  const [q, setQ] = useState('')
+  const [role, setRole] = useState<'all' | Role>('all')
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState({ name: '', email: '', role: 'student' as Role, department: 'Computer Applications', rollNo: '' })
+  const users = db.users.filter((u) => (role === 'all' || u.role === role) && (u.name + u.email + (u.rollNo ?? '')).toLowerCase().includes(q.toLowerCase()))
+
+  const setStatus = (u: User, status: User['status']) => update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.status = status; x.credentialsMismatchCount = 0; x.lockedAtTime = undefined })
+  const create = () => {
+    if (!draft.name || !draft.email) return
+    update((d) => {
+      const id = uid('u')
+      d.users.push({ id, name: draft.name, email: draft.email, password: 'welcome123', role: draft.role, status: 'ACTIVE', department: draft.department, rollNo: draft.rollNo || undefined, program: draft.role === 'student' ? 'BCA' : undefined, semester: draft.role === 'student' ? 5 : undefined, section: draft.role === 'student' ? 'A' : undefined, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#2563a8' })
+      if (draft.role === 'student') d.courses.forEach((c) => c.studentIds.push(id))
+    })
+    setCreating(false)
+  }
+
+  return (
+    <>
+      <PageHeader title="User management" subtitle="Create accounts, activate/deactivate and unlock users" actions={<button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Add user</button>} />
+      <Card>
+        <div className="row gap wrap" style={{ marginBottom: 12 }}>
+          <div className="search" style={{ maxWidth: 320 }}><Search size={16} className="muted" /><input placeholder="Search by name, email or roll no." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          {(['all', 'student', 'faculty', 'admin'] as const).map((r) => <button key={r} className={`chip ${role === r ? 'active' : ''}`} onClick={() => setRole(r)} style={{ textTransform: 'capitalize' }}>{r}</button>)}
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Role</th><th>ID / Dept.</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td><div className="row gap"><Avatar name={u.name} color={u.avatarColor} size={30} /><div><div style={{ fontWeight: 600 }}>{u.name}</div><div className="small muted">{u.email}</div></div></div></td>
+                  <td><Badge tone={u.role === 'admin' ? 'danger' : u.role === 'faculty' ? 'brand' : 'info'}>{u.role}</Badge></td>
+                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.department}</div></td>
+                  <td><Badge tone={u.status === 'ACTIVE' ? 'success' : u.status === 'LOCKED' ? 'warning' : 'danger'}>{u.status}</Badge>{u.firstLogin && <> <Badge tone="accent">First login</Badge></>}</td>
+                  <td>
+                    <div className="row gap">
+                      {u.status === 'ACTIVE' && u.id !== me.id && <button className="btn btn-outline btn-sm" onClick={() => setStatus(u, 'DEACTIVATED')}>Deactivate</button>}
+                      {u.status === 'DEACTIVATED' && <button className="btn btn-success btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Activate</button>}
+                      {u.status === 'LOCKED' && <button className="btn btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Unlock</button>}
+                      <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.password = 'welcome123'; x.firstLogin = true }); alert(`Password reset. ${u.name} must set a new password at next login (temporary: welcome123).`) }}>Reset password</button>
+                      {u.id !== me.id && u.status === 'ACTIVE' && !u.firstLogin && <button className="btn btn-ghost btn-sm" title="View the portal as this user" onClick={() => { switchUser(u.id); navigate('/home') }}>View as</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      {creating && (
+        <Modal title="Add user" onClose={() => setCreating(false)} footer={<><button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button><button className="btn" onClick={create}>Create account</button></>}>
+          <Field label="Full name"><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
+          <Field label="Email"><input className="input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></Field>
+          <div className="grid grid-2">
+            <Field label="Role"><select className="select" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}><option value="student">Student</option><option value="faculty">Faculty</option><option value="admin">Admin</option></select></Field>
+            <Field label="Roll no. / Employee ID"><input className="input" value={draft.rollNo} onChange={(e) => setDraft({ ...draft, rollNo: e.target.value })} /></Field>
+          </div>
+          <Field label="Department"><input className="input" value={draft.department} onChange={(e) => setDraft({ ...draft, department: e.target.value })} /></Field>
+          <div className="small muted">The temporary password is <code>welcome123</code>. The user must change it at first login.</div>
+        </Modal>
+      )}
+    </>
+  )
+}
+
+export function AdminReports() {
+  const db = useDB()
+  const students = db.users.filter((u) => u.role === 'student')
+  const lowAtt = students.map((s) => ({ s, a: attendanceStats(db, s.id) })).filter((x) => x.a.pct < 75).sort((a, b) => a.a.pct - b.a.pct)
+  const collected = db.fees.filter((f) => f.paidAt).reduce((s, f) => s + f.amount, 0)
+  const total = db.fees.reduce((s, f) => s + f.amount, 0)
+
+  const exportCsv = () => {
+    const rows = [['Roll no', 'Name', 'Attendance %', 'Fees outstanding']]
+    for (const s of students) rows.push([s.rollNo ?? '', s.name, String(attendanceStats(db, s.id).pct), String(db.fees.filter((f) => f.studentId === s.id && !f.paidAt).reduce((a, f) => a + f.amount, 0))])
+    const el = document.createElement('a')
+    el.href = URL.createObjectURL(new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' }))
+    el.download = 'student-report.csv'
+    el.click()
+  }
+
+  return (
+    <>
+      <PageHeader title="Reports" subtitle="Institution-wide analytics" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
+      <div className="grid grid-4">
+        <Stat label="Fee collection" value={`${Math.round((collected / total) * 100)}%`} hint={`${inr(collected)} of ${inr(total)}`} tone="success" />
+        <Stat label="Students below 75%" value={lowAtt.length} tone="danger" />
+        <Stat label="Active clubs" value={db.clubs.length} tone="accent" />
+        <Stat label="Assignments submitted" value={db.submissions.length} tone="info" />
+      </div>
+      <div className="grid grid-2">
+        <Card title="Attendance shortage">
+          <div className="list">
+            {lowAtt.length === 0 && <span className="muted">All students are above 75%.</span>}
+            {lowAtt.map(({ s, a }) => (
+              <div key={s.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+                <div className="row between"><span>{s.name} <span className="muted small">{s.rollNo}</span></span><strong>{a.pct}%</strong></div>
+                <Progress value={a.pct} />
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card title="Course-wise average attendance">
+          <div className="list">
+            {db.courses.map((c) => {
+              const avg = Math.round(c.studentIds.reduce((s, id) => s + attendanceStats(db, id, c.id).pct, 0) / c.studentIds.length)
+              return (
+                <div key={c.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+                  <div className="row between"><span>{c.code} · {c.name}</span><strong>{avg}%</strong></div>
+                  <Progress value={avg} />
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      </div>
+    </>
+  )
+}
