@@ -3,6 +3,7 @@ import { Bus, CheckCircle2, CreditCard, DoorOpen, Phone, Plus, Receipt, ShieldCh
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { feeOutstanding, fmtDate, fmtDateTime, inr, userName } from '../lib'
+import { can, officeUsers } from '../access'
 import type { FeeItem } from '../data/types'
 
 /* ---------------- Fees ---------------- */
@@ -30,7 +31,7 @@ export function Fees() {
   const [refundFor, setRefundFor] = useState<FeeItem | null>(null)
   const [refundReason, setRefundReason] = useState('')
 
-  if (user.role === 'admin') return <FeeAdmin />
+  if (can(user, 'manageFees')) return <FeeAdmin />
 
   const fees = db.fees.filter((f) => f.studentId === user.id).sort((a, b) => a.dueAt - b.dueAt)
   const due = fees.filter((f) => feeOutstanding(f) > 0)
@@ -67,7 +68,7 @@ export function Fees() {
   const requestRefund = () => {
     if (!refundFor || !refundReason.trim()) return
     update((d) => { d.refunds.push({ id: uid('rf'), feeId: refundFor.id, studentId: user.id, amount: refundFor.paidAmount ?? refundFor.amount, reason: refundReason, status: 'REQUESTED', createdAt: Date.now() }) })
-    notify(db.users.filter((u) => u.role === 'admin').map((u) => u.id), `Refund request from ${user.name}: ${refundFor.title}`, '/fees')
+    notify(officeUsers(db, 'finance'), `Refund request from ${user.name}: ${refundFor.title}`, '/fees')
     setRefundFor(null); setRefundReason('')
   }
 
@@ -271,7 +272,7 @@ export function GatePass() {
   const apply = () => {
     if (!draft.reason || !draft.out || !draft.back) return
     update((d) => { d.gatePasses.push({ id: uid('g'), studentId: user.id, reason: draft.reason, outAt: new Date(draft.out).getTime(), returnAt: new Date(draft.back).getTime(), status: 'PENDING' }) })
-    notify(db.users.filter((u) => u.role !== 'student').map((u) => u.id), `Gate pass request from ${user.name}`, '/gate-pass')
+    notify([...officeUsers(db, 'hostel'), ...db.users.filter((u) => u.role === 'faculty').map((u) => u.id)], `Gate pass request from ${user.name}`, '/gate-pass')
     setCreating(false); setDraft({ reason: '', out: '', back: '' })
   }
   const review = (id: string, status: 'APPROVED' | 'REJECTED') => {
@@ -382,7 +383,7 @@ export function Venues() {
                       <td key={s}>
                         {b ? (
                           <div className="small"><Badge tone={b.bookedBy === user.id ? 'brand' : 'neutral'}>{b.bookedBy === user.id ? 'Your booking' : 'Booked'}</Badge><div className="muted ellipsis" style={{ maxWidth: 140 }}>{b.purpose} · {userName(db, b.bookedBy)}</div>
-                            {(b.bookedBy === user.id || user.role === 'admin') && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.bookings = d.bookings.filter((x) => x.id !== b.id) })}>Cancel</button>}</div>
+                            {(b.bookedBy === user.id || can(user, 'manageAllBookings')) && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.bookings = d.bookings.filter((x) => x.id !== b.id) })}>Cancel</button>}</div>
                         ) : <button className="btn btn-outline btn-sm" onClick={() => setBooking({ venue: v, slot: s })}>Book</button>}
                       </td>
                     )

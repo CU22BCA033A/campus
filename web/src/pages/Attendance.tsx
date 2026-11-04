@@ -6,7 +6,44 @@ import { attendanceStats, coursesFor, fmtDate } from '../lib'
 
 export default function Attendance() {
   const user = useCurrentUser()!
-  return user.role === 'student' ? <StudentAttendance /> : <MarkAttendance />
+  if (user.role === 'student') return <StudentAttendance />
+  return user.role === 'admin' ? <AttendanceReport /> : <MarkAttendance />
+}
+
+/** Read-only view for offices (e.g. Controller of Examinations): shortage list across all courses. */
+function AttendanceReport() {
+  const db = useDB()
+  const [onlyShort, setOnlyShort] = useState(true)
+  const [threshold, setThreshold] = useState(75)
+  const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
+  const rows = students.map((s) => ({ s, overall: attendanceStats(db, s.id), per: db.courses.filter((c) => c.studentIds.includes(s.id)).map((c) => ({ c, a: attendanceStats(db, s.id, c.id) })) }))
+    .filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
+  const exportCsv = () => {
+    const lines = [['Roll no', 'Name', 'Overall %', ...db.courses.map((c) => c.code)], ...rows.map((r) => [r.s.rollNo ?? '', r.s.name, String(r.overall.pct), ...db.courses.map((c) => String(r.per.find((x) => x.c.id === c.id)?.a.pct ?? ''))])]
+    const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); el.download = 'attendance-shortage.csv'; el.click()
+  }
+  return (
+    <>
+      <PageHeader title="Attendance report" subtitle="Read-only. Faculty mark attendance; students below the threshold are not eligible for exams." actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
+      <Card>
+        <div className="row gap wrap" style={{ marginBottom: 12 }}>
+          <label className="row gap"><input type="checkbox" checked={onlyShort} onChange={(e) => setOnlyShort(e.target.checked)} /> Only students with a shortage</label>
+          <label className="row gap">Threshold <input className="input" style={{ width: 80 }} type="number" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />%</label>
+          <span className="muted small">{rows.length} student(s)</span>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Student</th><th>Overall</th>{db.courses.map((c) => <th key={c.id}>{c.code}</th>)}</tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.s.id}>
+              <td>{r.s.name}<div className="small muted">{r.s.rollNo}</div></td>
+              <td><Badge tone={r.overall.pct >= threshold ? 'success' : 'danger'}>{r.overall.pct}%</Badge></td>
+              {db.courses.map((c) => { const x = r.per.find((y) => y.c.id === c.id); return <td key={c.id}>{x ? <span style={{ color: x.a.pct < threshold ? 'var(--danger)' : undefined, fontWeight: x.a.pct < threshold ? 700 : 400 }}>{x.a.pct}%</span> : '—'}</td> })}
+            </tr>
+          ))}</tbody>
+        </table></div>
+      </Card>
+    </>
+  )
 }
 
 function StudentAttendance() {

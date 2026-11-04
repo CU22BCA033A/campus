@@ -1,4 +1,4 @@
-import type { DB, User } from './types'
+import type { DB, Office, User } from './types'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -27,13 +27,29 @@ export const parentUser: User = {
   wardIds: ['s1', 's2'],
 }
 
+const officer = (id: string, name: string, email: string, office: Office, basicSalary: number, avatarColor: string): User => ({
+  id, name, email, password: `${email.split('@')[0]}123`, role: 'admin', office, status: 'ACTIVE', department: 'Administration',
+  firstLogin: false, credentialsMismatchCount: 0, avatarColor, basicSalary,
+})
+
+/** One login per administrative office; each sees only its own modules. */
+export const officeStaff: User[] = [
+  officer('a2', 'Dr. Ramesh Iyengar (Registrar)', 'registrar@campus.edu', 'registrar', 120000, '#7a1e2c'),
+  officer('a3', 'Anita Krishnan (Finance Officer)', 'finance@campus.edu', 'finance', 85000, '#1f8a4c'),
+  officer('a4', 'Mahesh Gowda (Chief Warden)', 'warden@campus.edu', 'hostel', 55000, '#b7791f'),
+  officer('a5', 'Shalini Rao (HR Manager)', 'hr@campus.edu', 'hr', 80000, '#be185d'),
+  officer('a6', 'Dr. Vinod Kumar (Controller of Exams)', 'exams@campus.edu', 'exam', 110000, '#2563a8'),
+  officer('a7', 'Geetha Murthy (Librarian)', 'library@campus.edu', 'library', 60000, '#0f766e'),
+  officer('a8', 'Arjun Nair (Placement Officer)', 'placement@campus.edu', 'placement', 75000, '#6b3fa0'),
+]
+
 export function createErpSeed(): ErpPart {
   const apps: DB['applications'] = [
     { id: 'ap1', name: 'Riya Kapoor', email: 'riya.kapoor@mail.com', phone: '9900011111', program: 'BCA', qualifyingPct: 92, entranceScore: 88, category: 'General', stage: 'APPLIED', createdAt: d(-6), history: [{ stage: 'ENQUIRY', at: d(-9), by: 'web' }, { stage: 'APPLIED', at: d(-6), by: 'web' }], documents: [{ name: '10th marksheet', status: 'PENDING' }, { name: '12th marksheet', status: 'PENDING' }, { name: 'Transfer certificate', status: 'PENDING' }, { name: 'Aadhaar', status: 'PENDING' }] },
-    { id: 'ap2', name: 'Harsh Vardhan', email: 'harsh.v@mail.com', phone: '9900022222', program: 'BCA', qualifyingPct: 78, entranceScore: 71, category: 'OBC', stage: 'VERIFIED', createdAt: d(-8), history: [{ stage: 'APPLIED', at: d(-8), by: 'web' }, { stage: 'VERIFIED', at: d(-4), by: 'a1' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
-    { id: 'ap3', name: 'Sneha Pillai', email: 'sneha.p@mail.com', phone: '9900033333', program: 'BBA', qualifyingPct: 95, entranceScore: 93, category: 'General', stage: 'VERIFIED', createdAt: d(-10), history: [{ stage: 'APPLIED', at: d(-10), by: 'web' }, { stage: 'VERIFIED', at: d(-5), by: 'a1' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
+    { id: 'ap2', name: 'Harsh Vardhan', email: 'harsh.v@mail.com', phone: '9900022222', program: 'BCA', qualifyingPct: 78, entranceScore: 71, category: 'OBC', stage: 'VERIFIED', createdAt: d(-8), history: [{ stage: 'APPLIED', at: d(-8), by: 'web' }, { stage: 'VERIFIED', at: d(-4), by: 'a2' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
+    { id: 'ap3', name: 'Sneha Pillai', email: 'sneha.p@mail.com', phone: '9900033333', program: 'BBA', qualifyingPct: 95, entranceScore: 93, category: 'General', stage: 'VERIFIED', createdAt: d(-10), history: [{ stage: 'APPLIED', at: d(-10), by: 'web' }, { stage: 'VERIFIED', at: d(-5), by: 'a2' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
     { id: 'ap4', name: 'Mohammed Faiz', email: 'faiz@mail.com', phone: '9900044444', program: 'BCA', qualifyingPct: 84, entranceScore: 80, category: 'EWS', stage: 'ENQUIRY', createdAt: d(-1), history: [{ stage: 'ENQUIRY', at: d(-1), by: 'web' }], documents: [] },
-    { id: 'ap5', name: 'Tanvi Deshpande', email: 'tanvi.d@mail.com', phone: '9900055555', program: 'B.Sc Data Science', qualifyingPct: 88, entranceScore: 90, category: 'General', stage: 'OFFERED', meritScore: 89.2, rank: 1, scholarshipId: 'sc1', offerFee: 63750, createdAt: d(-14), history: [{ stage: 'APPLIED', at: d(-14), by: 'web' }, { stage: 'VERIFIED', at: d(-11), by: 'a1' }, { stage: 'SHORTLISTED', at: d(-9), by: 'a1' }, { stage: 'OFFERED', at: d(-7), by: 'a1' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
+    { id: 'ap5', name: 'Tanvi Deshpande', email: 'tanvi.d@mail.com', phone: '9900055555', program: 'B.Sc Data Science', qualifyingPct: 88, entranceScore: 90, category: 'General', stage: 'OFFERED', meritScore: 89.2, rank: 1, scholarshipId: 'sc1', offerFee: 63750, createdAt: d(-14), history: [{ stage: 'APPLIED', at: d(-14), by: 'web' }, { stage: 'VERIFIED', at: d(-11), by: 'a2' }, { stage: 'SHORTLISTED', at: d(-9), by: 'a2' }, { stage: 'OFFERED', at: d(-7), by: 'a2' }], documents: [{ name: '10th marksheet', status: 'VERIFIED' }, { name: '12th marksheet', status: 'VERIFIED' }, { name: 'Transfer certificate', status: 'VERIFIED' }, { name: 'Aadhaar', status: 'VERIFIED' }] },
   ]
 
   return {
@@ -69,14 +85,14 @@ export function createErpSeed(): ErpPart {
     mealCoupons: [],
     leaves: [
       { id: 'lv1', staffId: 'f2', type: 'Casual', from: iso(3), to: iso(4), days: 2, reason: 'Family function', status: 'PENDING' },
-      { id: 'lv2', staffId: 'f1', type: 'Sick', from: iso(-12), to: iso(-12), days: 1, reason: 'Fever', status: 'APPROVED', reviewedBy: 'a1' },
-      { id: 'lv3', staffId: 'f3', type: 'Loss of Pay', from: `${iso(0).slice(0, 7)}-01`, to: `${iso(0).slice(0, 7)}-02`, days: 2, reason: 'Personal', status: 'APPROVED', reviewedBy: 'a1' },
+      { id: 'lv2', staffId: 'f1', type: 'Sick', from: iso(-12), to: iso(-12), days: 1, reason: 'Fever', status: 'APPROVED', reviewedBy: 'a5' },
+      { id: 'lv3', staffId: 'f3', type: 'Loss of Pay', from: `${iso(0).slice(0, 7)}-01`, to: `${iso(0).slice(0, 7)}-02`, days: 2, reason: 'Personal', status: 'APPROVED', reviewedBy: 'a5' },
     ],
     payrollRuns: [],
     purchaseRequests: [
       { id: 'pr1', title: 'Dell OptiPlex desktops for Lab-3', category: 'IT Equipment', quantity: 20, unitCost: 52000, vendor: 'Dell India', requestedBy: 'f1', department: 'Computer Applications', status: 'PENDING_FINANCE', approvals: [{ level: 'HOD', by: 'f2', at: d(-2), decision: 'APPROVED' }], warrantyMonths: 36, createdAt: d(-3) },
       { id: 'pr2', title: 'Whiteboard markers & dusters', category: 'Stationery', quantity: 200, unitCost: 45, vendor: 'Office Mart', requestedBy: 'f3', department: 'Mathematics', status: 'PENDING_HOD', approvals: [], warrantyMonths: 0, createdAt: d(-1) },
-      { id: 'pr3', title: 'Epson projectors', category: 'IT Equipment', quantity: 4, unitCost: 48000, vendor: 'Epson', requestedBy: 'f2', department: 'Computer Applications', status: 'PO_ISSUED', poNumber: 'PO-2026-0041', approvals: [{ level: 'HOD', by: 'f2', at: d(-15), decision: 'APPROVED' }, { level: 'Finance', by: 'a1', at: d(-13), decision: 'APPROVED' }], warrantyMonths: 24, createdAt: d(-16) },
+      { id: 'pr3', title: 'Epson projectors', category: 'IT Equipment', quantity: 4, unitCost: 48000, vendor: 'Epson', requestedBy: 'f2', department: 'Computer Applications', status: 'PO_ISSUED', poNumber: 'PO-2026-0041', approvals: [{ level: 'HOD', by: 'f2', at: d(-15), decision: 'APPROVED' }, { level: 'Finance', by: 'a3', at: d(-13), decision: 'APPROVED' }], warrantyMonths: 24, createdAt: d(-16) },
     ],
     assets: [
       { id: 'as-1', tag: 'AST-0001', name: 'HP LaserJet Printer', category: 'IT Equipment', location: 'Admin Block', status: 'ALLOTTED', assignedTo: 'a1', purchasedAt: d(-700), warrantyUntil: d(30), cost: 32000 },
@@ -87,7 +103,7 @@ export function createErpSeed(): ErpPart {
     tickets: [
       { id: 'tk1', number: 'HC-1001', category: 'IT Support', subject: 'Wi-Fi not working in Block A', description: 'Campus Wi-Fi drops every few minutes on the 1st floor of Block A.', raisedBy: 's1', status: 'IN_PROGRESS', priority: 'High', anonymous: false, createdAt: d(-1), slaHours: 24, assignedTo: 'a1', comments: [{ by: 'a1', text: 'Network team has been informed.', at: d(-0.8) }] },
       { id: 'tk2', number: 'HC-1002', category: 'Grievance', subject: 'Canteen hygiene', description: 'Plates are not cleaned properly at the main canteen.', raisedBy: 's3', status: 'OPEN', priority: 'Medium', anonymous: true, createdAt: d(-2), slaHours: 72, comments: [] },
-      { id: 'tk3', number: 'HC-1003', category: 'Bonafide Certificate', subject: 'Bonafide for bank account', description: 'Need a bonafide certificate for opening a bank account.', raisedBy: 's2', status: 'RESOLVED', priority: 'Low', anonymous: false, createdAt: d(-5), slaHours: 48, assignedTo: 'a1', comments: [{ by: 'a1', text: 'Certificate generated. Download from the ticket.', at: d(-4) }] },
+      { id: 'tk3', number: 'HC-1003', category: 'Bonafide Certificate', subject: 'Bonafide for bank account', description: 'Need a bonafide certificate for opening a bank account.', raisedBy: 's2', status: 'RESOLVED', priority: 'Low', anonymous: false, createdAt: d(-5), slaHours: 48, assignedTo: 'a2', comments: [{ by: 'a2', text: 'Certificate generated. Download from the ticket.', at: d(-4) }] },
     ],
     drives: [
       { id: 'dr1', company: 'Infosys', role: 'Systems Engineer', kind: 'Full-time', ctc: '₹ 3.6 LPA', minCgpa: 6.5, maxBacklogs: 0, deadline: d(6), description: 'Hiring for the 2027 batch. Aptitude test, technical and HR interviews.', applications: [{ studentId: 's2', status: 'SHORTLISTED' }] },
@@ -115,7 +131,7 @@ export function createErpSeed(): ErpPart {
     ],
     refunds: [],
     audit: [
-      { id: 'au0', at: d(-1), actorId: 'a1', action: 'ADMISSION_VERIFY', detail: 'Verified documents for Harsh Vardhan' },
+      { id: 'au0', at: d(-1), actorId: 'a2', action: 'ADMISSION_VERIFY', detail: 'Verified documents for Harsh Vardhan' },
     ],
   }
 }

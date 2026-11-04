@@ -3,6 +3,7 @@ import { HandHeart, Plus, Search, Users } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Stat } from '../components/ui'
 import { inr } from '../lib'
+import { can } from '../access'
 import type { Alumnus } from '../data/types'
 
 export default function Alumni() {
@@ -25,7 +26,7 @@ export default function Alumni() {
 
   return (
     <>
-      <PageHeader title="Alumni network" subtitle="Directory, mentorship and giving" actions={user.role === 'admin' && <button className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Add alumnus</button>} />
+      <PageHeader title="Alumni network" subtitle="Directory, mentorship and giving" actions={can(user, 'manageAlumni') && <button className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Add alumnus</button>} />
       <div className="grid grid-4">
         <Stat label="Alumni" value={db.alumni.length} icon={<Users size={22} />} />
         <Stat label="Mentors" value={db.alumni.filter((a) => a.mentor).length} tone="info" />
@@ -45,7 +46,7 @@ export default function Alumni() {
               <div className="row gap wrap">{a.mentor && <Badge tone="info">Mentor</Badge>}{a.donations > 0 && <Badge tone="success">Donor · {inr(a.donations)}</Badge>}</div>
               <div className="row gap">
                 {user.role === 'student' && a.mentor && (a.mentees.includes(user.id) ? <Badge tone="accent">Mentorship requested</Badge> : <button className="btn btn-outline btn-sm" onClick={() => requestMentor(a)}>Request mentorship</button>)}
-                {user.role === 'admin' && <button className="btn btn-outline btn-sm" onClick={() => setDonate(a)}>Record donation</button>}
+                {can(user, 'manageAlumni') && <button className="btn btn-outline btn-sm" onClick={() => setDonate(a)}>Record donation</button>}
               </div>
             </div>
           </Card>

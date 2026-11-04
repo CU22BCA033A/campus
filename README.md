@@ -27,13 +27,41 @@ npm run build      # production build in web/dist
 |------|-------|----------|
 | Student | `student@campus.edu` | `student123` |
 | Faculty | `faculty@campus.edu` | `faculty123` |
-| Admin | `admin@campus.edu` | `admin123` |
+| System administrator (everything) | `admin@campus.edu` | `admin123` |
+| Registrar office | `registrar@campus.edu` | `registrar123` |
+| Finance & accounts | `finance@campus.edu` | `finance123` |
+| Hostel warden | `warden@campus.edu` | `warden123` |
+| Human resources | `hr@campus.edu` | `hr123` |
+| Controller of examinations | `exams@campus.edu` | `exams123` |
+| Library | `library@campus.edu` | `library123` |
+| Placement cell | `placement@campus.edu` | `placement123` |
 | Parent (two wards) | `parent@campus.edu` | `parent123` |
 | First login (forced password change) | `new@campus.edu` | `welcome123` |
 | Deactivated account | `kavya.das@campus.edu` | `student123` |
 
 Five wrong passwords lock an account for 15 minutes. An admin can unlock it from **User management**.
 All data is stored in the browser (localStorage). Use **avatar menu → Reset demo data** to start over.
+
+## Who sees what
+
+Menus, page access and in-page actions depend on the user's role and, for administrative
+staff, their **office**. All of it is defined in one place: `web/src/access.ts`
+(`ROUTE_ACCESS` for pages, `CAPS` for actions such as approving or running payroll).
+
+| Office | Sees | Can act on |
+|--------|------|-----------|
+| Registrar | Admissions, student & parent records, courses, timetable, feedback, venues, reports | admissions pipeline, Registrar-level purchase approvals, grievances & certificates |
+| Finance | Fee collection, procurement & assets, payroll, reports | refunds, scholarships, Finance-level approvals, purchase orders, receiving, assets, payroll run |
+| Hostel warden | Hostel & mess, gate passes | room allocation, leave approvals (after parent), mess counter, maintenance tickets |
+| HR | Leave & payroll, staff records | staff leave approvals, payroll run, staff accounts |
+| Exams | Examinations, attendance report (read-only), gradebook, timetable | seating & invigilators, publishing results, re-evaluation |
+| Library | Library | issue desk, returns & fines, catalogue |
+| Placement cell | Placements, alumni | drives, shortlists, interviews, alumni records |
+| System administrator | everything + audit log | everything |
+
+Every office also has Home (its own "needs your action" queue), notices, events, the Help
+Center (tickets are routed to the office that handles each category) and its own leave and
+payslips. Notifications go to the responsible office, not to every admin.
 
 ## Modules
 

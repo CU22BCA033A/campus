@@ -3,6 +3,7 @@ import { BookMarked, Plus, Search } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, inr, userName } from '../lib'
+import { can } from '../access'
 import type { Book, BookLoan, DB } from '../data/types'
 
 const LOAN_DAYS = 14
@@ -15,7 +16,7 @@ const available = (db: DB, b: Book) => b.copies - db.loans.filter((l) => l.bookI
 export default function Library() {
   const db = useDB()
   const user = useCurrentUser()!
-  const isLibrarian = user.role === 'admin'
+  const isLibrarian = can(user, 'manageLibrary')
   const [tab, setTab] = useState<'catalog' | 'loans' | 'desk'>('catalog')
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)

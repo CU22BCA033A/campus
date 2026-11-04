@@ -3,7 +3,8 @@ import { PackageCheck, Plus, ShoppingCart } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { approvalChain, fmtDate, inr, userName } from '../lib'
-import type { Asset, PRStatus, PurchaseRequest } from '../data/types'
+import { can, officeUsers, persona } from '../access'
+import type { Asset, Office, PRStatus, PurchaseRequest, User } from '../data/types'
 
 const CATS: PurchaseRequest['category'][] = ['IT Equipment', 'Furniture', 'Lab Equipment', 'Stationery', 'Sports']
 const HOD_OF: Record<string, string> = { 'Computer Applications': 'f2', Mathematics: 'f3' }
@@ -12,16 +13,20 @@ const tone = (s: PRStatus) => (s === 'REJECTED' ? 'danger' : s === 'RECEIVED' ? 
 const total = (p: PurchaseRequest) => p.quantity * p.unitCost
 
 /** Who may act on the current approval level. */
-function canApprove(p: PurchaseRequest, userId: string, role: string) {
-  if (p.status === 'PENDING_HOD') return HOD_OF[p.department] === userId || role === 'admin'
-  if (p.status === 'PENDING_FINANCE' || p.status === 'PENDING_REGISTRAR') return role === 'admin'
+function canApprove(p: PurchaseRequest, user: User) {
+  if (p.status === 'PENDING_HOD') return HOD_OF[p.department] === user.id || persona(user) === 'super'
+  if (p.status === 'PENDING_FINANCE') return can(user, 'approvePurchaseFinance')
+  if (p.status === 'PENDING_REGISTRAR') return can(user, 'approvePurchaseRegistrar')
   return false
 }
+const NEXT_OFFICE: Record<string, Office> = { Finance: 'finance', Registrar: 'registrar' }
 
 export default function Procurement() {
   const db = useDB()
   const user = useCurrentUser()!
-  const isAdmin = user.role === 'admin'
+  const isAdmin = can(user, 'issuePurchaseOrder')
+  const canAssets = can(user, 'manageAssets')
+  const seesAll = isAdmin || can(user, 'approvePurchaseRegistrar')
   const [tab, setTab] = useState<'requests' | 'assets'>('requests')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ title: '', category: 'IT Equipment' as PurchaseRequest['category'], quantity: 1, unitCost: 0, vendor: '', warrantyMonths: 12 })
@@ -29,7 +34,7 @@ export default function Procurement() {
   const [allot, setAllot] = useState<Asset | null>(null)
   const [allotTo, setAllotTo] = useState('')
 
-  const prs = db.purchaseRequests.filter((p) => isAdmin || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
+  const prs = db.purchaseRequests.filter((p) => seesAll || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
 
   const create = () => {
     if (!draft.title || draft.unitCost <= 0) return
@@ -52,6 +57,8 @@ export default function Procurement() {
       x.status = !ok ? 'REJECTED' : next ? statusFor[next] : 'APPROVED'
     })
     notify([p.requestedBy], `"${p.title}": ${level} ${ok ? 'approved' : 'rejected'}${ok && next ? `, now with ${next}` : ''}`, '/procurement')
+    if (ok && next) notify(officeUsers(db, NEXT_OFFICE[next]), `Purchase request "${p.title}" awaits ${next} approval`, '/procurement')
+    if (ok && !next) notify(officeUsers(db, 'finance'), `"${p.title}" fully approved: issue the purchase order`, '/procurement')
     audit(user.id, `PR_${ok ? 'APPROVE' : 'REJECT'}`, `${p.title} at ${level}`)
   }
   const issuePO = (p: PurchaseRequest) => {
@@ -100,7 +107,7 @@ export default function Procurement() {
                   <span className="small muted">Approval chain for {inr(total(p))}</span>
                 </div>
                 <div className="row gap">
-                  {canApprove(p, user.id, user.role) && <><button className="btn btn-success btn-sm" onClick={() => decide(p, true)}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => decide(p, false)}>Reject</button></>}
+                  {canApprove(p, user) && <><button className="btn btn-success btn-sm" onClick={() => decide(p, true)}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => decide(p, false)}>Reject</button></>}
                   {isAdmin && p.status === 'APPROVED' && <button className="btn btn-sm" onClick={() => issuePO(p)}>Issue purchase order</button>}
                   {isAdmin && p.status === 'PO_ISSUED' && <button className="btn btn-sm" onClick={() => receive(p)}><PackageCheck size={14} /> Mark consignment received</button>}
                 </div>
@@ -112,14 +119,14 @@ export default function Procurement() {
       {tab === 'assets' && (
         <Card action={<div className="row gap">{(['all', 'expiring', 'expired'] as const).map((f) => <button key={f} className={`chip ${assetFilter === f ? 'active' : ''}`} onClick={() => setAssetFilter(f)}>{f === 'all' ? 'All' : f === 'expiring' ? 'Warranty ≤ 90 days' : 'Warranty expired'}</button>)}</div>} title="Assets (sorted by warranty expiry)">
           <div className="table-wrap"><table>
-            <thead><tr><th>Tag</th><th>Asset</th><th>Category</th><th>Location / holder</th><th>Warranty</th><th>Status</th>{isAdmin && <th />}</tr></thead>
+            <thead><tr><th>Tag</th><th>Asset</th><th>Category</th><th>Location / holder</th><th>Warranty</th><th>Status</th>{canAssets && <th />}</tr></thead>
             <tbody>{assets.map((a) => (
               <tr key={a.id}>
                 <td><strong>{a.tag}</strong></td><td>{a.name}<div className="small muted">{inr(a.cost)}{a.purchaseRequestId ? ` · from ${db.purchaseRequests.find((p) => p.id === a.purchaseRequestId)?.poNumber}` : ''}</div></td>
                 <td>{a.category}</td><td>{a.assignedTo ? userName(db, a.assignedTo) : a.location}</td>
                 <td><Badge tone={a.warrantyUntil < now ? 'danger' : a.warrantyUntil < now + 90 * 86_400_000 ? 'warning' : 'success'}>{fmtDate(a.warrantyUntil)}</Badge></td>
                 <td><Badge tone={a.status === 'ALLOTTED' ? 'info' : a.status === 'MAINTENANCE' ? 'warning' : a.status === 'RETIRED' ? 'neutral' : 'success'}>{a.status.replace('_', ' ')}</Badge></td>
-                {isAdmin && <td><div className="row gap">
+                {canAssets && <td><div className="row gap">
                   {a.status === 'IN_STOCK' && <button className="btn btn-outline btn-sm" onClick={() => { setAllot(a); setAllotTo('') }}>Allot</button>}
                   {a.status === 'ALLOTTED' && <button className="btn btn-outline btn-sm" onClick={() => update((d) => { const x = d.assets.find((y) => y.id === a.id)!; x.status = 'IN_STOCK'; x.assignedTo = undefined; x.location = 'Central Store' })}>Return</button>}
                   {a.status !== 'MAINTENANCE' && a.status !== 'RETIRED' && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.assets.find((y) => y.id === a.id)!.status = 'MAINTENANCE' })}>Maintenance</button>}

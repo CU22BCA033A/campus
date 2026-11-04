@@ -7,7 +7,14 @@ import { Field } from '../components/ui'
 const DEMO = [
   { label: 'Student', email: 'student@campus.edu', password: 'student123' },
   { label: 'Faculty', email: 'faculty@campus.edu', password: 'faculty123' },
-  { label: 'Admin', email: 'admin@campus.edu', password: 'admin123' },
+  { label: 'System admin', email: 'admin@campus.edu', password: 'admin123' },
+  { label: 'Registrar', email: 'registrar@campus.edu', password: 'registrar123' },
+  { label: 'Finance', email: 'finance@campus.edu', password: 'finance123' },
+  { label: 'Hostel warden', email: 'warden@campus.edu', password: 'warden123' },
+  { label: 'HR', email: 'hr@campus.edu', password: 'hr123' },
+  { label: 'Exams', email: 'exams@campus.edu', password: 'exams123' },
+  { label: 'Library', email: 'library@campus.edu', password: 'library123' },
+  { label: 'Placements', email: 'placement@campus.edu', password: 'placement123' },
   { label: 'Parent', email: 'parent@campus.edu', password: 'parent123' },
   { label: 'First login', email: 'new@campus.edu', password: 'welcome123' },
 ]

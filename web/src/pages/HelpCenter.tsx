@@ -3,6 +3,7 @@ import { LifeBuoy, Plus, Printer } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
+import { OFFICES, persona, TICKET_OFFICE, officeUsers } from '../access'
 import type { DB, Ticket } from '../data/types'
 
 const CATS: { id: Ticket['category']; sla: number }[] = [
@@ -24,7 +25,8 @@ export function noDuesCheck(db: DB, userId: string) {
 export default function HelpCenter() {
   const db = useDB()
   const user = useCurrentUser()!
-  const isAdmin = user.role === 'admin'
+  const isStaff = user.role === 'admin'
+  const handles = (t: Ticket) => isStaff && (persona(user) === 'super' || TICKET_OFFICE[t.category] === persona(user))
   const [tab, setTab] = useState<'open' | 'resolved'>('open')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ category: 'IT Support' as Ticket['category'], subject: '', description: '', priority: 'Medium' as Ticket['priority'], anonymous: false })
@@ -32,7 +34,7 @@ export default function HelpCenter() {
   const [comment, setComment] = useState('')
   const [cert, setCert] = useState<Ticket | null>(null)
 
-  const visible = db.tickets.filter((t) => isAdmin || t.raisedBy === user.id || t.assignedTo === user.id)
+  const visible = db.tickets.filter((t) => handles(t) || t.raisedBy === user.id || t.assignedTo === user.id)
   const list = visible.filter((t) => (tab === 'open' ? !['RESOLVED', 'CLOSED'].includes(t.status) : ['RESOLVED', 'CLOSED'].includes(t.status))).sort((a, b) => b.createdAt - a.createdAt)
   const t = view ? db.tickets.find((x) => x.id === view) : null
 
@@ -40,7 +42,7 @@ export default function HelpCenter() {
     if (!draft.subject.trim()) return
     const number = `HC-${1000 + db.tickets.length + 1}`
     update((d) => { d.tickets.push({ id: uid('tk'), number, ...draft, raisedBy: user.id, status: 'OPEN', createdAt: Date.now(), slaHours: CATS.find((c) => c.id === draft.category)!.sla, comments: [] }) })
-    notify(db.users.filter((u) => u.role === 'admin').map((u) => u.id), `New ticket ${number}: ${draft.subject}`, '/help')
+    notify(officeUsers(db, TICKET_OFFICE[draft.category]), `New ticket ${number}: ${draft.subject}`, '/help')
     setCreating(false); setDraft({ category: 'IT Support', subject: '', description: '', priority: 'Medium', anonymous: false })
   }
   const setStatus = (tk: Ticket, status: Ticket['status']) => {
@@ -57,7 +59,7 @@ export default function HelpCenter() {
 
   return (
     <>
-      <PageHeader title="Help Center" subtitle="Requests, grievances, certificates and facility bookings, tracked against SLAs" actions={user.role !== 'admin' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>} />
+      <PageHeader title="Help Center" subtitle="Requests, grievances, certificates and facility bookings, tracked against SLAs" actions={persona(user) !== 'super' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>} />
       <div className="grid grid-4">
         <Stat label="Open" value={visible.filter((x) => x.status === 'OPEN').length} tone="warning" icon={<LifeBuoy size={22} />} />
         <Stat label="In progress" value={visible.filter((x) => x.status === 'IN_PROGRESS').length} tone="info" />
@@ -86,13 +88,13 @@ export default function HelpCenter() {
       {t && (
         <Modal title={`${t.number} · ${t.subject}`} onClose={() => setView(null)} footer={<>
           {(t.category === 'Bonafide Certificate' || t.category === 'No-Dues Certificate') && t.status === 'RESOLVED' && <button className="btn btn-outline" onClick={() => setCert(t)}><Printer size={14} /> Certificate</button>}
-          {isAdmin && t.status === 'OPEN' && <button className="btn btn-outline" onClick={() => setStatus(t, 'IN_PROGRESS')}>Start work</button>}
-          {isAdmin && !['RESOLVED', 'CLOSED'].includes(t.status) && <button className="btn btn-success" disabled={t.category === 'No-Dues Certificate' && !noDuesCheck(db, t.raisedBy).ok} onClick={() => setStatus(t, 'RESOLVED')}>Resolve</button>}
+          {handles(t) && t.status === 'OPEN' && <button className="btn btn-outline" onClick={() => setStatus(t, 'IN_PROGRESS')}>Start work</button>}
+          {handles(t) && !['RESOLVED', 'CLOSED'].includes(t.status) && <button className="btn btn-success" disabled={t.category === 'No-Dues Certificate' && !noDuesCheck(db, t.raisedBy).ok} onClick={() => setStatus(t, 'RESOLVED')}>Resolve</button>}
           {t.raisedBy === user.id && t.status === 'RESOLVED' && <button className="btn" onClick={() => setStatus(t, 'CLOSED')}>Close</button>}
         </>}>
           <div className="row gap wrap"><Badge tone="brand">{t.category}</Badge><Badge>{t.status}</Badge>{isOverdue(t) && <Badge tone="danger">SLA breached</Badge>}{t.anonymous && <Badge tone="accent">Anonymous</Badge>}</div>
           <p>{t.description}</p>
-          <div className="small muted">Raised {fmtDateTime(t.createdAt)}{t.assignedTo ? ` · assigned to ${userName(db, t.assignedTo)}` : ''}</div>
+          <div className="small muted">Handled by {OFFICES[TICKET_OFFICE[t.category]].label} · raised {fmtDateTime(t.createdAt)}{t.assignedTo ? ` · assigned to ${userName(db, t.assignedTo)}` : ''}</div>
           {t.category === 'No-Dues Certificate' && (
             <div className="stack" style={{ gap: 4 }}>
               <h3>Department clearance (automatic)</h3>
@@ -107,7 +109,7 @@ export default function HelpCenter() {
       )}
       {creating && (
         <Modal title="Raise a request" onClose={() => setCreating(false)} footer={<><button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button><button className="btn" onClick={create}>Submit</button></>}>
-          <Field label="Category"><select className="select" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as Ticket['category'] })}>{CATS.map((c) => <option key={c.id} value={c.id}>{c.id} (SLA {c.sla}h)</option>)}</select></Field>
+          <Field label="Category"><select className="select" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as Ticket['category'] })}>{CATS.map((c) => <option key={c.id} value={c.id}>{c.id} · {OFFICES[TICKET_OFFICE[c.id]].label} (SLA {c.sla}h)</option>)}</select></Field>
           <Field label="Subject"><input className="input" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /></Field>
           <Field label="Details"><textarea className="textarea" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></Field>
           <Field label="Priority"><select className="select" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as Ticket['priority'] })}><option>Low</option><option>Medium</option><option>High</option></select></Field>

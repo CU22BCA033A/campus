@@ -15,7 +15,14 @@ function load(): DB {
       for (const k of Object.keys(fresh) as (keyof DB)[]) {
         if (saved[k] === undefined) (saved as unknown as Record<string, unknown>)[k] = fresh[k]
       }
-      if (!saved.users.some((u) => u.role === 'parent')) saved.users.push(...fresh.users.filter((u) => u.role === 'parent'))
+      // Add demo accounts introduced since the data was saved (parent, office staff).
+      for (const u of fresh.users) if (!saved.users.some((x) => x.id === u.id)) saved.users.push(u)
+      for (const u of saved.users) {
+        if (u.role !== 'admin' || u.office) continue
+        const seeded = fresh.users.find((x) => x.id === u.id)
+        u.office = seeded?.office ?? 'super'
+        if (seeded) u.name = seeded.name
+      }
       saved.version = fresh.version
       return saved
     }

@@ -1,4 +1,5 @@
 export type Role = 'student' | 'faculty' | 'admin' | 'parent'
+export type Office = 'super' | 'registrar' | 'finance' | 'hostel' | 'hr' | 'exam' | 'library' | 'placement'
 export type AccountStatus = 'ACTIVE' | 'DEACTIVATED' | 'LOCKED'
 
 export interface User {
@@ -18,6 +19,7 @@ export interface User {
   credentialsMismatchCount: number
   lockedAtTime?: number
   avatarColor: string
+  office?: Office // admin accounts: the office they work in (defaults to 'super')
   wardIds?: string[] // parent accounts: children at this institution
   cgpa?: number
   backlogs?: number

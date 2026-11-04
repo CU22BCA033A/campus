@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom'
-import { BookOpen, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, Megaphone, PartyPopper, Users, UserX } from 'lucide-react'
+import { BookOpen, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, Megaphone, Users } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Progress, Stat } from '../components/ui'
-import { attendanceStats, courseName, coursesFor, DAYS, feeOutstanding, fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
+import { attendanceStats, courseName, coursesFor, DAYS, fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
 import ParentHome from './Parent'
+import OfficeHome from './OfficeHome'
 
 export default function Home() {
   const user = useCurrentUser()!
   if (user.role === 'parent') return <ParentHome />
+  if (user.role === 'admin') return <OfficeHome />
   return <StaffStudentHome />
 }
 
@@ -34,13 +36,11 @@ function StaffStudentHome() {
         <div className="row gap wrap" style={{ position: 'relative', zIndex: 1 }}>
           {user.role === 'student' && <Link className="btn btn-accent" to="/assignments">View assignments</Link>}
           {user.role === 'faculty' && <Link className="btn btn-accent" to="/attendance">Mark attendance</Link>}
-          {user.role === 'admin' && <Link className="btn btn-accent" to="/notices">Post a notice</Link>}
         </div>
       </div>
 
       {user.role === 'student' && <StudentStats />}
       {user.role === 'faculty' && <FacultyStats />}
-      {user.role === 'admin' && <AdminStats />}
 
       <div className="grid grid-2">
         <Card title={`Today's classes · ${DAYS[today]}`} action={<Link to="/timetable" className="small">Full timetable</Link>}>
@@ -136,21 +136,6 @@ function FacultyStats() {
       <Stat label="Students" value={students} tone="info" icon={<Users size={22} />} />
       <Link to="/assignments" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Submissions to grade" value={toGrade} tone="warning" icon={<ClipboardList size={22} />} /></Link>
       <Link to="/gate-pass" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Gate passes pending" value={passes} tone="accent" icon={<DoorOpen size={22} />} /></Link>
-    </div>
-  )
-}
-
-function AdminStats() {
-  const db = useDB()
-  const students = db.users.filter((u) => u.role === 'student')
-  const collected = db.fees.reduce((s, f) => s + (f.paidAmount ?? (f.paidAt ? f.amount : 0)), 0)
-  const outstanding = db.fees.reduce((s, f) => s + feeOutstanding(f), 0)
-  return (
-    <div className="grid grid-4">
-      <Link to="/admin/users" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Students" value={students.length} hint={`${db.users.filter((u) => u.role === 'faculty').length} faculty`} icon={<Users size={22} />} /></Link>
-      <Stat label="Inactive accounts" value={db.users.filter((u) => u.status !== 'ACTIVE').length} tone="danger" icon={<UserX size={22} />} />
-      <Link to="/admin/reports" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Fees collected" value={inr(collected)} hint={`${inr(outstanding)} outstanding`} tone="success" icon={<CreditCard size={22} />} /></Link>
-      <Link to="/events" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Upcoming events" value={db.events.filter((e) => e.startsAt > Date.now()).length} tone="accent" icon={<PartyPopper size={22} />} /></Link>
     </div>
   )
 }

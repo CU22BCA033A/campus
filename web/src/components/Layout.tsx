@@ -6,19 +6,17 @@ import {
   ScrollText, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
 } from 'lucide-react'
 import { logout, resetDemoData, update, useCurrentUser, useDB } from '../data/store'
-import type { Role } from '../data/types'
 import { Avatar } from './ui'
+import { can, canAccess, personaLabel } from '../access'
 import { timeAgo } from '../lib'
 
-interface NavItem { to: string; label: string; icon: React.ElementType; roles?: Role[] }
-const ALL: Role[] = ['student', 'faculty', 'admin', 'parent']
-const STAFF: Role[] = ['faculty', 'admin']
-// Items without `roles` are shown to students, faculty and admins (not parents).
+interface NavItem { to: string; label: string; icon: React.ElementType }
+// Visibility of every item comes from ROUTE_ACCESS in access.ts (role + office).
 const NAV: { section: string; items: NavItem[] }[] = [
   { section: 'Overview', items: [
-    { to: '/home', label: 'Home', icon: Home, roles: ALL },
+    { to: '/home', label: 'Home', icon: Home },
     { to: '/timetable', label: 'Timetable', icon: CalendarDays },
-    { to: '/notices', label: 'Notice Board', icon: Megaphone, roles: ALL },
+    { to: '/notices', label: 'Notice Board', icon: Megaphone },
   ] },
   { section: 'Academics', items: [
     { to: '/courses', label: 'Courses', icon: BookOpen },
@@ -32,29 +30,29 @@ const NAV: { section: string; items: NavItem[] }[] = [
   ] },
   { section: 'Campus Life', items: [
     { to: '/feed', label: 'Discussions', icon: MessageSquare },
-    { to: '/events', label: 'Events', icon: PartyPopper, roles: ALL },
+    { to: '/events', label: 'Events', icon: PartyPopper },
     { to: '/clubs', label: 'Clubs & Chapters', icon: Users },
     { to: '/polls', label: 'Polls & Surveys', icon: Vote },
-    { to: '/placements', label: 'Placements', icon: Briefcase, roles: ['student', 'admin'] },
+    { to: '/placements', label: 'Placements', icon: Briefcase },
     { to: '/alumni', label: 'Alumni', icon: HandHeart },
   ] },
   { section: 'Services', items: [
-    { to: '/fees', label: 'Fees & Payments', icon: CreditCard, roles: ['student', 'admin'] },
-    { to: '/hostel', label: 'Hostel & Mess', icon: BedDouble, roles: ['student', 'admin'] },
+    { to: '/fees', label: 'Fees & Payments', icon: CreditCard },
+    { to: '/hostel', label: 'Hostel & Mess', icon: BedDouble },
     { to: '/gate-pass', label: 'Gate Pass', icon: DoorOpen },
-    { to: '/transport', label: 'Transport', icon: Bus, roles: ALL },
-    { to: '/help', label: 'Help Center', icon: LifeBuoy, roles: ALL },
-    { to: '/venues', label: 'Venue Booking', icon: Building2, roles: STAFF },
+    { to: '/transport', label: 'Transport', icon: Bus },
+    { to: '/help', label: 'Help Center', icon: LifeBuoy },
+    { to: '/venues', label: 'Venue Booking', icon: Building2 },
   ] },
-  { section: 'Staff', items: [
-    { to: '/hr', label: 'HR & Payroll', icon: BadgeIndianRupee, roles: STAFF },
-    { to: '/procurement', label: 'Procurement & Assets', icon: Package, roles: STAFF },
+  { section: 'Office', items: [
+    { to: '/hr', label: 'HR & Payroll', icon: BadgeIndianRupee },
+    { to: '/procurement', label: 'Procurement & Assets', icon: Package },
   ] },
   { section: 'Administration', items: [
-    { to: '/admissions', label: 'Admissions', icon: UserPlus, roles: ['admin'] },
-    { to: '/admin/users', label: 'User Management', icon: UserCog, roles: ['admin'] },
-    { to: '/admin/reports', label: 'Reports', icon: BarChart3, roles: ['admin'] },
-    { to: '/admin/audit', label: 'Audit Log', icon: History, roles: ['admin'] },
+    { to: '/admissions', label: 'Admissions', icon: UserPlus },
+    { to: '/admin/users', label: 'User Management', icon: UserCog },
+    { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
+    { to: '/admin/audit', label: 'Audit Log', icon: History },
   ] },
 ]
 
@@ -87,11 +85,11 @@ export default function Layout() {
     const s = q.trim().toLowerCase()
     if (s.length < 2) return []
     const items: { label: string; sub: string; to: string }[] = []
-    db.courses.forEach((c) => (c.name + c.code).toLowerCase().includes(s) && items.push({ label: c.name, sub: `Course · ${c.code}`, to: `/courses/${c.id}` }))
+    if (canAccess(user, '/courses')) db.courses.forEach((c) => (c.name + c.code).toLowerCase().includes(s) && items.push({ label: c.name, sub: `Course · ${c.code}`, to: `/courses/${c.id}` }))
     db.notices.forEach((n) => n.title.toLowerCase().includes(s) && items.push({ label: n.title, sub: 'Notice', to: '/notices' }))
     db.events.forEach((e) => e.title.toLowerCase().includes(s) && items.push({ label: e.title, sub: 'Event', to: '/events' }))
-    db.clubs.forEach((c) => c.name.toLowerCase().includes(s) && items.push({ label: c.name, sub: 'Club', to: '/clubs' }))
-    if (user.role !== 'student') db.users.forEach((u) => (u.name + (u.rollNo ?? '')).toLowerCase().includes(s) && items.push({ label: u.name, sub: `${u.role} · ${u.rollNo ?? u.email}`, to: user.role === 'admin' ? '/admin/users' : '/attendance' }))
+    if (canAccess(user, '/clubs')) db.clubs.forEach((c) => c.name.toLowerCase().includes(s) && items.push({ label: c.name, sub: 'Club', to: '/clubs' }))
+    if (can(user, 'manageStudents') || can(user, 'manageStaff')) db.users.forEach((u) => (u.name + (u.rollNo ?? '')).toLowerCase().includes(s) && items.push({ label: u.name, sub: `${u.role} · ${u.rollNo ?? u.email}`, to: '/admin/users' }))
     return items.slice(0, 8)
   }, [q, db, user])
 
@@ -110,14 +108,14 @@ export default function Layout() {
         </div>
         <nav className="nav">
           {NAV.map((sec) => {
-            const items = sec.items.filter((i) => (i.roles ?? ['student', 'faculty', 'admin']).includes(user.role))
+            const items = sec.items.filter((i) => canAccess(user, i.to))
             if (!items.length) return null
             return (
               <div key={sec.section}>
                 <div className="nav-section">{sec.section}</div>
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} className={({ isActive }) => (isActive ? 'active' : '')}>
-                    <i.icon size={18} /> {i.label}
+                    <i.icon size={18} /> {i.to === '/hr' && !can(user, 'approveStaffLeave') && !can(user, 'runPayroll') ? 'My Leave & Payslips' : i.label}
                   </NavLink>
                 ))}
               </div>
@@ -131,7 +129,7 @@ export default function Layout() {
           <button className="icon-btn menu-btn" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
           <div className="search" style={{ position: 'relative' }}>
             <Search size={16} className="muted" />
-            <input placeholder="Search courses, notices, events…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+            <input placeholder={user.role === "admin" && !canAccess(user, "/courses") ? "Search notices, events, people…" : "Search courses, notices, events…"} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
             {results.length > 0 && (
               <div className="dropdown" style={{ left: 0, right: 'auto', width: '100%' }}>
                 {results.map((r, i) => (
@@ -171,7 +169,7 @@ export default function Layout() {
               <Avatar name={user.name} color={user.avatarColor} size={34} />
               <div className="hide-sm" style={{ textAlign: 'left', lineHeight: 1.2 }}>
                 <div style={{ fontWeight: 600 }}>{user.name}</div>
-                <div className="small muted" style={{ textTransform: 'capitalize' }}>{user.role}{user.rollNo ? ` · ${user.rollNo}` : ''}</div>
+                <div className="small muted">{personaLabel(user)}{user.rollNo ? ` · ${user.rollNo}` : ''}</div>
               </div>
             </button>
             {menuOpen && (

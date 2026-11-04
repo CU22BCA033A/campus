@@ -3,6 +3,7 @@ import { AlertTriangle, Armchair, CheckCircle2, FileText, Printer, Ticket } from
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { courseName, coursesFor, examEligibility, fmtDate, gradeResults, inr, userName } from '../lib'
+import { can, officeUsers } from '../access'
 import type { DB, Exam } from '../data/types'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
@@ -50,7 +51,7 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
     if (!reval) return
     const r = db.results.find((x) => x.examId === reval.id && x.studentId === studentId)!
     update((d) => { d.revaluations.push({ id: uid('rv'), examId: reval.id, studentId, reason, fee: 500, status: 'REQUESTED', oldMarks: r.marks, createdAt: Date.now() }) })
-    notify(['a1'], `Re-evaluation request from ${student.name} (${courseName(db, reval.courseId)})`, '/exams')
+    notify(officeUsers(db, 'exam'), `Re-evaluation request from ${student.name} (${courseName(db, reval.courseId)})`, '/exams')
     setReval(null); setReason('')
   }
 
@@ -142,7 +143,7 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
 function ExamAdmin() {
   const db = useDB()
   const user = useCurrentUser()!
-  const isAdmin = user.role === 'admin'
+  const isAdmin = can(user, 'manageExams')
   const exams = db.exams.filter((e) => isAdmin || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id).sort((a, b) => a.date.localeCompare(b.date))
   const [tab, setTab] = useState<'exams' | 'reval'>('exams')
   const [marksFor, setMarksFor] = useState<Exam | null>(null)

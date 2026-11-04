@@ -1,5 +1,5 @@
 import type { DB, User } from './types'
-import { createErpSeed, parentUser } from './seedErp'
+import { createErpSeed, officeStaff, parentUser } from './seedErp'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -53,7 +53,8 @@ const faculty: User[] = [
 
 const admin: User = {
   id: 'a1',
-  name: 'Registrar Office',
+  name: 'System Administrator',
+  office: 'super',
   email: 'admin@campus.edu',
   password: 'admin123',
   role: 'admin',
@@ -81,7 +82,7 @@ const allStudentIds = [...students.map((s) => s.id), newStudent.id]
 export function createSeed(): DB {
   return {
     version: 2,
-    users: [...students, newStudent, ...faculty, admin, parentUser],
+    users: [...students, newStudent, ...faculty, admin, ...officeStaff, parentUser],
     ...createErpSeed(),
     courses: [
       { id: 'c1', code: 'BCA501', name: 'Web Technologies', facultyId: 'f1', credits: 4, semester: 5, description: 'HTML, CSS, JavaScript, React and REST APIs for modern web applications.', studentIds: allStudentIds },
@@ -162,10 +163,10 @@ export function createSeed(): DB {
       { id: 'p3', courseId: null, authorId: 'a1', text: 'Welcome to the new semester! The campus portal now supports online fee payment and gate pass requests.', createdAt: d(-6), replies: [] },
     ],
     notices: [
-      { id: 'n1', title: 'Mid-semester examinations schedule released', body: 'Mid-semester examinations for all programmes will begin next Monday. Hall tickets are available under Exams. Carry your ID card.', category: 'Exam', audience: 'all', postedBy: 'a1', createdAt: d(-1), pinned: true },
-      { id: 'n2', title: 'Placement drive: Infosys & TCS', body: 'Final year students can register for the campus drive by Friday. Resume must be updated in the Placement section.', category: 'Placement', audience: 'student', postedBy: 'a1', createdAt: d(-3), pinned: false },
-      { id: 'n3', title: 'Faculty development programme on GenAI', body: 'A 3-day FDP on Generative AI in teaching will be held in the Seminar Hall. Register with the IQAC office.', category: 'Academic', audience: 'faculty', postedBy: 'a1', createdAt: d(-4), pinned: false },
-      { id: 'n4', title: 'Library timings extended', body: 'The central library will remain open until 10 PM during the examination period.', category: 'General', audience: 'all', postedBy: 'a1', createdAt: d(-5), pinned: false },
+      { id: 'n1', title: 'Mid-semester examinations schedule released', body: 'Mid-semester examinations for all programmes will begin next Monday. Hall tickets are available under Exams. Carry your ID card.', category: 'Exam', audience: 'all', postedBy: 'a2', createdAt: d(-1), pinned: true },
+      { id: 'n2', title: 'Placement drive: Infosys & TCS', body: 'Final year students can register for the campus drive by Friday. Resume must be updated in the Placement section.', category: 'Placement', audience: 'student', postedBy: 'a2', createdAt: d(-3), pinned: false },
+      { id: 'n3', title: 'Faculty development programme on GenAI', body: 'A 3-day FDP on Generative AI in teaching will be held in the Seminar Hall. Register with the IQAC office.', category: 'Academic', audience: 'faculty', postedBy: 'a2', createdAt: d(-4), pinned: false },
+      { id: 'n4', title: 'Library timings extended', body: 'The central library will remain open until 10 PM during the examination period.', category: 'General', audience: 'all', postedBy: 'a2', createdAt: d(-5), pinned: false },
     ],
     events: [
       { id: 'e1', title: 'Hackathon 2026', description: '24-hour hackathon on campus sustainability. Teams of up to 4.', venue: 'Innovation Centre', startsAt: d(8, 9), clubId: 'cl1', rsvps: ['s2', 's5'], capacity: 120 },
@@ -188,12 +189,12 @@ export function createSeed(): DB {
       ]
     }),
     gatePasses: [
-      { id: 'g1', studentId: 's1', reason: 'Medical appointment', outAt: d(-4, 14), returnAt: d(-4, 18), status: 'APPROVED', reviewedBy: 'a1' },
+      { id: 'g1', studentId: 's1', reason: 'Medical appointment', outAt: d(-4, 14), returnAt: d(-4, 18), status: 'APPROVED', reviewedBy: 'a4' },
       { id: 'g2', studentId: 's3', reason: 'Family function', outAt: d(1, 16), returnAt: d(2, 20), status: 'PENDING' },
     ],
     polls: [
       { id: 'pl1', question: 'Preferred slot for the extra DBMS lab?', options: ['Saturday 10 AM', 'Wednesday 4 PM', 'Friday 3 PM'], votes: { s2: 0, s3: 0, s4: 1 }, createdBy: 'f2', closesAt: d(3) },
-      { id: 'pl2', question: 'Should the canteen add a late-evening menu?', options: ['Yes', 'No', 'Only during exams'], votes: { s5: 0, s6: 2, f1: 0 }, createdBy: 'a1', closesAt: d(7) },
+      { id: 'pl2', question: 'Should the canteen add a late-evening menu?', options: ['Yes', 'No', 'Only during exams'], votes: { s5: 0, s6: 2, f1: 0 }, createdBy: 'a2', closesAt: d(7) },
     ],
     routes: [
       { id: 'r1', name: 'Route 1 – Hebbal', bus: 'KA-01-F-4521', driver: 'Ramesh K', driverPhone: '9845012345', subscribers: ['s1', 's4'], stops: [{ name: 'Hebbal Flyover', time: '07:15' }, { name: 'Yelahanka New Town', time: '07:35' }, { name: 'Airport Road Toll', time: '07:55' }, { name: 'Campus', time: '08:25' }] },

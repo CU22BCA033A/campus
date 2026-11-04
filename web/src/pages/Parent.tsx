@@ -4,6 +4,7 @@ import { BedDouble, CalendarCheck, CreditCard, GraduationCap, Megaphone } from '
 import { audit, notify, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, PageHeader, Progress, Stat } from '../components/ui'
 import { attendanceStats, coursesFor, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo } from '../lib'
+import { officeUsers } from '../access'
 import { StudentExams } from './Exams'
 
 /** Parent portal: one login, several wards (children). */
@@ -31,7 +32,7 @@ export default function ParentHome() {
   const decide = (id: string, ok: boolean) => {
     update((d) => { d.hostelLeaves.find((x) => x.id === id)!.parentStatus = ok ? 'APPROVED' : 'REJECTED' })
     notify([ward.id], `Your parent ${ok ? 'approved' : 'declined'} your hostel leave request`, '/hostel')
-    if (ok) notify(db.users.filter((u) => u.role === 'admin').map((u) => u.id), `Hostel leave for ${ward.name} awaits warden approval`, '/hostel')
+    if (ok) notify(officeUsers(db, 'hostel'), `Hostel leave for ${ward.name} awaits warden approval`, '/hostel')
     audit(user.id, 'HOSTEL_LEAVE_PARENT', `${ok ? 'Approved' : 'Rejected'} leave for ${ward.name}`)
   }
 

@@ -3,6 +3,7 @@ import { Download, Play, Plus } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { computePayslip, fmtDate, inr, userName } from '../lib'
+import { can, officeUsers } from '../access'
 import type { Payslip, StaffLeave } from '../data/types'
 
 const QUOTA: Record<StaffLeave['type'], number> = { Casual: 12, Sick: 10, Earned: 15, Duty: 30, 'Loss of Pay': 365 }
@@ -16,8 +17,9 @@ function lopDaysIn(leaves: StaffLeave[], staffId: string, month: string) {
 export default function HR() {
   const db = useDB()
   const user = useCurrentUser()!
-  const isAdmin = user.role === 'admin'
-  const [tab, setTab] = useState<'leave' | 'payslips' | 'approvals' | 'payroll'>(isAdmin ? 'approvals' : 'leave')
+  const canApprove = can(user, 'approveStaffLeave')
+  const canPayroll = can(user, 'runPayroll')
+  const [tab, setTab] = useState<'leave' | 'payslips' | 'approvals' | 'payroll'>(canApprove ? 'approvals' : canPayroll ? 'payroll' : 'leave')
   const [applying, setApplying] = useState(false)
   const [draft, setDraft] = useState<{ type: StaffLeave['type']; from: string; to: string; reason: string }>({ type: 'Casual', from: '', to: '', reason: '' })
   const [slip, setSlip] = useState<{ p: Payslip; month: string } | null>(null)
@@ -32,7 +34,7 @@ export default function HR() {
     const n = days(draft.from, draft.to)
     if (draft.type !== 'Loss of Pay' && used(draft.type) + n > QUOTA[draft.type]) return alert(`Not enough ${draft.type} leave balance.`)
     update((d) => { d.leaves.push({ id: uid('lv'), staffId: user.id, ...draft, days: n, status: 'PENDING' }) })
-    notify(db.users.filter((u) => u.role === 'admin' && u.id !== user.id).map((u) => u.id), `${user.name} applied for ${n} day(s) ${draft.type} leave`, '/hr')
+    notify(officeUsers(db, 'hr').filter((id) => id !== user.id), `${user.name} applied for ${n} day(s) ${draft.type} leave`, '/hr')
     setApplying(false); setDraft({ type: 'Casual', from: '', to: '', reason: '' })
   }
   const review = (l: StaffLeave, status: 'APPROVED' | 'REJECTED') => {
@@ -60,7 +62,8 @@ export default function HR() {
       <PageHeader title="HR & payroll" subtitle="Leave → approval → payroll sync, with PF, ESI, professional tax and TDS" actions={<button className="btn" onClick={() => setApplying(true)}><Plus size={14} /> Apply for leave</button>} />
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'leave', label: 'My leave' }, { id: 'payslips', label: 'My payslips', count: mySlips.length },
-        ...(isAdmin ? [{ id: 'approvals' as const, label: 'Leave approvals', count: db.leaves.filter((l) => l.status === 'PENDING').length }, { id: 'payroll' as const, label: 'Payroll' }] : []),
+        ...(canApprove ? [{ id: 'approvals' as const, label: 'Leave approvals', count: db.leaves.filter((l) => l.status === 'PENDING').length }] : []),
+        ...(canPayroll ? [{ id: 'payroll' as const, label: 'Payroll' }] : []),
       ]} />
       {tab === 'leave' && (
         <>
@@ -81,7 +84,7 @@ export default function HR() {
           )}
         </Card>
       )}
-      {tab === 'approvals' && isAdmin && (
+      {tab === 'approvals' && canApprove && (
         <Card>
           <table><thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th /></tr></thead><tbody>
             {[...db.leaves].sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING')).map((l) => (
@@ -92,7 +95,7 @@ export default function HR() {
           </tbody></table>
         </Card>
       )}
-      {tab === 'payroll' && isAdmin && (
+      {tab === 'payroll' && canPayroll && (
         <>
           <Card>
             <div className="row gap wrap">

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, FileCheck2, GraduationCap, Plus, Upload, XCircle } from 'lucide-react'
-import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
+import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, inr, timeAgo } from '../lib'
+import { officeUsers } from '../access'
 import type { Application, AppStage, DB } from '../data/types'
 
 export const PROGRAMS: Record<string, { fee: number; code: string }> = {
@@ -234,7 +235,7 @@ export function ApplyForm() {
     update((d) => {
       d.applications.push({ id, name: f.name, email: f.email, phone: f.phone, program: f.program, qualifyingPct: Number(f.qualifyingPct), entranceScore: Number(f.entranceScore), category: f.category, stage: 'APPLIED', createdAt: Date.now(), history: [{ stage: 'APPLIED', at: Date.now(), by: 'web' }], documents: DOCS.map((n) => ({ name: files[n] ? `${n} (${files[n]})` : n, status: 'PENDING' as const })) })
     })
-    notify(['a1'], `New admission application from ${f.name}`, '/admissions')
+    notify(officeUsers(getDB(), 'registrar'), `New admission application from ${f.name}`, '/admissions')
     setDone(id.toUpperCase())
   }
   return (

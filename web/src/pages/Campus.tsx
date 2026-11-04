@@ -3,6 +3,7 @@ import { CalendarPlus, MapPin, Megaphone, Pin, Plus, Trash2, Users, Vote } from 
 import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Progress, Tabs } from '../components/ui'
 import { fmtDateTime, timeAgo, userName } from '../lib'
+import { can } from '../access'
 import type { Notice } from '../data/types'
 
 /* ---------------- Notice board ---------------- */
@@ -12,7 +13,7 @@ export function Notices() {
   const [cat, setCat] = useState<string>('All')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Pick<Notice, 'title' | 'body' | 'category' | 'audience' | 'pinned'>>({ title: '', body: '', category: 'General', audience: 'all', pinned: false })
-  const canPost = user.role !== 'student'
+  const canPost = can(user, 'postNotices')
   const cats = ['All', 'Academic', 'Exam', 'Event', 'Placement', 'General']
   const list = db.notices
     .filter((n) => (n.audience === 'all' || n.audience === user.role || user.role === 'admin') && (cat === 'All' || n.category === cat))
@@ -40,7 +41,7 @@ export function Notices() {
                 <p style={{ marginTop: 6 }}>{n.body}</p>
                 <div className="small muted" style={{ marginTop: 8 }}>{userName(db, n.postedBy)} · {fmtDateTime(n.createdAt)}</div>
               </div>
-              {(user.role === 'admin' || n.postedBy === user.id) && (
+              {(can(user, 'moderateNotices') || n.postedBy === user.id) && (
                 <div className="row">
                   <button className="icon-btn" title={n.pinned ? 'Unpin' : 'Pin'} onClick={() => update((d) => { const x = d.notices.find((y) => y.id === n.id)!; x.pinned = !x.pinned })}><Pin size={16} /></button>
                   <button className="icon-btn" title="Delete" onClick={() => confirm('Delete this notice?') && update((d) => { d.notices = d.notices.filter((y) => y.id !== n.id) })}><Trash2 size={16} /></button>
@@ -88,7 +89,7 @@ export function Events() {
 
   return (
     <>
-      <PageHeader title="Events" subtitle="What's happening on campus" actions={user.role !== 'student' && <button className="btn" onClick={() => setCreating(true)}><CalendarPlus size={14} /> Create event</button>} />
+      <PageHeader title="Events" subtitle="What's happening on campus" actions={can(user, 'createEvents') && <button className="btn" onClick={() => setCreating(true)}><CalendarPlus size={14} /> Create event</button>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'upcoming', label: 'Upcoming', count: lists.upcoming.length }, { id: 'mine', label: 'My RSVPs', count: lists.mine.length }, { id: 'past', label: 'Past' }]} />
       {lists[tab].length === 0 && <Card><Empty text="No events here." /></Card>}
       <div className="grid grid-3">
@@ -172,7 +173,7 @@ export function Polls() {
   }
   return (
     <>
-      <PageHeader title="Polls & Surveys" subtitle="Quick opinions from the campus community" actions={user.role !== 'student' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New poll</button>} />
+      <PageHeader title="Polls & Surveys" subtitle="Quick opinions from the campus community" actions={can(user, 'createPolls') && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New poll</button>} />
       <div className="grid grid-2">
         {db.polls.map((p) => {
           const total = Object.keys(p.votes).length

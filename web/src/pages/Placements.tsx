@@ -3,6 +3,7 @@ import { Briefcase, Plus } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat } from '../components/ui'
 import { fmtDate, fmtDateTime, userName } from '../lib'
+import { can, officeUsers } from '../access'
 import type { PlacementDrive, User } from '../data/types'
 
 type AppStatus = PlacementDrive['applications'][number]['status']
@@ -19,6 +20,7 @@ export default function Placements() {
   const db = useDB()
   const user = useCurrentUser()!
   const isStudent = user.role === 'student'
+  const canManage = can(user, 'managePlacements')
   const [creating, setCreating] = useState(false)
   const [manage, setManage] = useState<string | null>(null)
   const [draft, setDraft] = useState({ company: '', role: '', kind: 'Full-time' as PlacementDrive['kind'], ctc: '', minCgpa: 6, maxBacklogs: 0, deadline: '', description: '' })
@@ -28,7 +30,7 @@ export default function Placements() {
 
   const apply = (d: PlacementDrive) => {
     update((x) => { x.drives.find((y) => y.id === d.id)!.applications.push({ studentId: user.id, status: 'APPLIED' }) })
-    notify(['a1'], `${user.name} applied to ${d.company}`, '/placements')
+    notify(officeUsers(db, 'placement'), `${user.name} applied to ${d.company}`, '/placements')
   }
   const setStatus = (d: PlacementDrive, sid: string, status: AppStatus, slot?: number) => {
     update((x) => { const a = x.drives.find((y) => y.id === d.id)!.applications.find((y) => y.studentId === sid)!; a.status = status; if (slot) a.slot = slot })
@@ -46,7 +48,7 @@ export default function Placements() {
 
   return (
     <>
-      <PageHeader title="Placements & internships" subtitle={isStudent ? 'Openings you are eligible for, and your applications' : 'Drives, eligibility, shortlists and interview scheduling'} actions={!isStudent && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New drive</button>} />
+      <PageHeader title="Placements & internships" subtitle={isStudent ? 'Openings you are eligible for, and your applications' : 'Drives, eligibility, shortlists and interview scheduling'} actions={canManage && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New drive</button>} />
       <div className="grid grid-4">
         <Stat label="Active drives" value={db.drives.filter((d) => d.deadline > Date.now()).length} icon={<Briefcase size={22} />} />
         <Stat label="Students placed" value={`${placed.size}/${students.length}`} tone="success" />
@@ -66,7 +68,7 @@ export default function Placements() {
                 {isStudent && (mine ? <div className="row gap"><Badge tone={tone(mine.status)}>{mine.status}</Badge>{mine.slot && <span className="small">Interview: {fmtDateTime(mine.slot)}</span>}</div>
                   : el!.ok ? <button className="btn" disabled={!open} onClick={() => apply(d)}>Apply</button>
                   : <div className="small" style={{ color: 'var(--danger)' }}>Not eligible: {el!.reasons.join(', ')}</div>)}
-                {!isStudent && <div className="row between"><span className="small">{d.applications.length} applicants · {students.filter((s) => driveEligibility(d, s).ok).length} eligible</span><button className="btn btn-outline btn-sm" onClick={() => setManage(d.id)}>Manage</button></div>}
+                {canManage && <div className="row between"><span className="small">{d.applications.length} applicants · {students.filter((s) => driveEligibility(d, s).ok).length} eligible</span><button className="btn btn-outline btn-sm" onClick={() => setManage(d.id)}>Manage</button></div>}
               </div>
             </Card>
           )
