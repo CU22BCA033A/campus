@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AlertCircle, BookOpen, CalendarCheck, CreditCard, Eye, EyeOff, MessageSquare } from 'lucide-react'
 import { completeFirstLogin, login, type LoginResponse } from '../data/store'
 import { Field } from '../components/ui'
@@ -8,6 +8,7 @@ const DEMO = [
   { label: 'Student', email: 'student@campus.edu', password: 'student123' },
   { label: 'Faculty', email: 'faculty@campus.edu', password: 'faculty123' },
   { label: 'Admin', email: 'admin@campus.edu', password: 'admin123' },
+  { label: 'Parent', email: 'parent@campus.edu', password: 'parent123' },
   { label: 'First login', email: 'new@campus.edu', password: 'welcome123' },
 ]
 
@@ -105,6 +106,7 @@ export default function Login() {
               <a href="#" onClick={(e) => { e.preventDefault(); alert('A password reset link would be emailed to you. (Demo: no email is sent.)') }}>Forgot password?</a>
             </div>
             <button className="btn btn-block" type="submit">Sign in</button>
+            <div className="small" style={{ textAlign: 'center' }}>New applicant? <Link to="/apply">Apply for admission</Link></div>
 
             <div className="stack" style={{ gap: 6 }}>
               <span className="small muted">Demo accounts (click to fill):</span>

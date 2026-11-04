@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Download, Plus, Search } from 'lucide-react'
-import { switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
+import { audit, switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
-import { attendanceStats, inr } from '../lib'
+import { attendanceStats, feeOutstanding, inr } from '../lib'
 import type { Role, User } from '../data/types'
 import { useNavigate } from 'react-router-dom'
 
@@ -16,7 +16,7 @@ export function AdminUsers() {
   const [draft, setDraft] = useState({ name: '', email: '', role: 'student' as Role, department: 'Computer Applications', rollNo: '' })
   const users = db.users.filter((u) => (role === 'all' || u.role === role) && (u.name + u.email + (u.rollNo ?? '')).toLowerCase().includes(q.toLowerCase()))
 
-  const setStatus = (u: User, status: User['status']) => update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.status = status; x.credentialsMismatchCount = 0; x.lockedAtTime = undefined })
+  const setStatus = (u: User, status: User['status']) => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.status = status; x.credentialsMismatchCount = 0; x.lockedAtTime = undefined }); audit(me.id, `USER_${status}`, `${u.name} → ${status}`) }
   const create = () => {
     if (!draft.name || !draft.email) return
     update((d) => {
@@ -33,7 +33,7 @@ export function AdminUsers() {
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
           <div className="search" style={{ maxWidth: 320 }}><Search size={16} className="muted" /><input placeholder="Search by name, email or roll no." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          {(['all', 'student', 'faculty', 'admin'] as const).map((r) => <button key={r} className={`chip ${role === r ? 'active' : ''}`} onClick={() => setRole(r)} style={{ textTransform: 'capitalize' }}>{r}</button>)}
+          {(['all', 'student', 'faculty', 'parent', 'admin'] as const).map((r) => <button key={r} className={`chip ${role === r ? 'active' : ''}`} onClick={() => setRole(r)} style={{ textTransform: 'capitalize' }}>{r}</button>)}
         </div>
         <div className="table-wrap">
           <table>
@@ -42,8 +42,8 @@ export function AdminUsers() {
               {users.map((u) => (
                 <tr key={u.id}>
                   <td><div className="row gap"><Avatar name={u.name} color={u.avatarColor} size={30} /><div><div style={{ fontWeight: 600 }}>{u.name}</div><div className="small muted">{u.email}</div></div></div></td>
-                  <td><Badge tone={u.role === 'admin' ? 'danger' : u.role === 'faculty' ? 'brand' : 'info'}>{u.role}</Badge></td>
-                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.department}</div></td>
+                  <td><Badge tone={u.role === 'admin' ? 'danger' : u.role === 'faculty' ? 'brand' : u.role === 'parent' ? 'accent' : 'info'}>{u.role}</Badge></td>
+                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.role === 'parent' ? `Wards: ${(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ')}` : u.department}</div></td>
                   <td><Badge tone={u.status === 'ACTIVE' ? 'success' : u.status === 'LOCKED' ? 'warning' : 'danger'}>{u.status}</Badge>{u.firstLogin && <> <Badge tone="accent">First login</Badge></>}</td>
                   <td>
                     <div className="row gap">
@@ -65,7 +65,7 @@ export function AdminUsers() {
           <Field label="Full name"><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
           <Field label="Email"><input className="input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></Field>
           <div className="grid grid-2">
-            <Field label="Role"><select className="select" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}><option value="student">Student</option><option value="faculty">Faculty</option><option value="admin">Admin</option></select></Field>
+            <Field label="Role"><select className="select" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}><option value="student">Student</option><option value="faculty">Faculty</option><option value="admin">Admin</option><option value="parent">Parent</option></select></Field>
             <Field label="Roll no. / Employee ID"><input className="input" value={draft.rollNo} onChange={(e) => setDraft({ ...draft, rollNo: e.target.value })} /></Field>
           </div>
           <Field label="Department"><input className="input" value={draft.department} onChange={(e) => setDraft({ ...draft, department: e.target.value })} /></Field>
@@ -80,12 +80,12 @@ export function AdminReports() {
   const db = useDB()
   const students = db.users.filter((u) => u.role === 'student')
   const lowAtt = students.map((s) => ({ s, a: attendanceStats(db, s.id) })).filter((x) => x.a.pct < 75).sort((a, b) => a.a.pct - b.a.pct)
-  const collected = db.fees.filter((f) => f.paidAt).reduce((s, f) => s + f.amount, 0)
-  const total = db.fees.reduce((s, f) => s + f.amount, 0)
+  const collected = db.fees.reduce((s, f) => s + (f.paidAmount ?? (f.paidAt ? f.amount : 0)), 0)
+  const total = collected + db.fees.reduce((s, f) => s + feeOutstanding(f), 0)
 
   const exportCsv = () => {
     const rows = [['Roll no', 'Name', 'Attendance %', 'Fees outstanding']]
-    for (const s of students) rows.push([s.rollNo ?? '', s.name, String(attendanceStats(db, s.id).pct), String(db.fees.filter((f) => f.studentId === s.id && !f.paidAt).reduce((a, f) => a + f.amount, 0))])
+    for (const s of students) rows.push([s.rollNo ?? '', s.name, String(attendanceStats(db, s.id).pct), String(db.fees.filter((f) => f.studentId === s.id).reduce((a, f) => a + feeOutstanding(f), 0))])
     const el = document.createElement('a')
     el.href = URL.createObjectURL(new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' }))
     el.download = 'student-report.csv'
@@ -127,6 +127,28 @@ export function AdminReports() {
           </div>
         </Card>
       </div>
+    </>
+  )
+}
+
+export function AuditLog() {
+  const db = useDB()
+  const [q, setQ] = useState('')
+  const rows = db.audit.filter((a) => (a.action + a.detail + (db.users.find((u) => u.id === a.actorId)?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
+  const exportCsv = () => {
+    const lines = [['Time', 'User', 'Action', 'Detail'], ...rows.map((a) => [new Date(a.at).toISOString(), db.users.find((u) => u.id === a.actorId)?.name ?? a.actorId, a.action, `"${a.detail.replace(/"/g, '""')}"`])]
+    const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([lines.map((r) => r.join(',')).join('\n')], { type: 'text/csv' })); el.download = 'audit-log.csv'; el.click()
+  }
+  return (
+    <>
+      <PageHeader title="Audit log" subtitle="Who did what, and when, across every module" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
+      <Card>
+        <div className="search" style={{ maxWidth: 360, marginBottom: 12 }}><Search size={16} className="muted" /><input placeholder="Filter by user, action or detail" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody>{rows.slice(0, 300).map((a) => <tr key={a.id}><td className="small">{new Date(a.at).toLocaleString('en-IN')}</td><td>{db.users.find((u) => u.id === a.actorId)?.name ?? a.actorId}</td><td><Badge tone="info">{a.action}</Badge></td><td style={{ whiteSpace: 'normal' }}>{a.detail}</td></tr>)}</tbody>
+        </table></div>
+      </Card>
     </>
   )
 }

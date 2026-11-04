@@ -2,29 +2,7 @@ import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, PageHeader, Stat } from '../components/ui'
-import { attendanceStats, coursesFor, gradeFor } from '../lib'
-import type { DB } from '../data/types'
-
-/** Internal marks: assignments (60%) + quizzes (40%), out of 100. */
-function internal(db: DB, studentId: string, courseId: string) {
-  const as = db.assignments.filter((a) => a.courseId === courseId)
-  let got = 0, max = 0
-  for (const a of as) {
-    const s = db.submissions.find((x) => x.assignmentId === a.id && x.studentId === studentId)
-    if (s?.marks !== undefined) { got += s.marks; max += a.maxMarks }
-  }
-  const qs = db.quizzes.filter((q) => q.courseId === courseId)
-  let qgot = 0, qmax = 0
-  for (const q of qs) {
-    const at = db.attempts.find((x) => x.quizId === q.id && x.studentId === studentId)
-    if (at) { qgot += at.score; qmax += q.questions.length }
-  }
-  const aPct = max ? got / max : null
-  const qPct = qmax ? qgot / qmax : null
-  if (aPct === null && qPct === null) return null
-  const pct = aPct !== null && qPct !== null ? aPct * 0.6 + qPct * 0.4 : (aPct ?? qPct)!
-  return Math.round(pct * 100)
-}
+import { attendanceStats, coursesFor, gradeFor, internalPct as internal } from '../lib'
 
 export default function Grades() {
   const user = useCurrentUser()!

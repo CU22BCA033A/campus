@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, BookOpen, Bus, CalendarDays, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, GraduationCap,
   Home, LogOut, Megaphone, Menu, MessageSquare, PartyPopper, Search, Star, Users, Vote, Building2, UserCog, BarChart3, RotateCcw,
+  ScrollText, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
 } from 'lucide-react'
 import { logout, resetDemoData, update, useCurrentUser, useDB } from '../data/store'
 import type { Role } from '../data/types'
@@ -10,35 +11,50 @@ import { Avatar } from './ui'
 import { timeAgo } from '../lib'
 
 interface NavItem { to: string; label: string; icon: React.ElementType; roles?: Role[] }
+const ALL: Role[] = ['student', 'faculty', 'admin', 'parent']
+const STAFF: Role[] = ['faculty', 'admin']
+// Items without `roles` are shown to students, faculty and admins (not parents).
 const NAV: { section: string; items: NavItem[] }[] = [
   { section: 'Overview', items: [
-    { to: '/home', label: 'Home', icon: Home },
+    { to: '/home', label: 'Home', icon: Home, roles: ALL },
     { to: '/timetable', label: 'Timetable', icon: CalendarDays },
-    { to: '/notices', label: 'Notice Board', icon: Megaphone },
+    { to: '/notices', label: 'Notice Board', icon: Megaphone, roles: ALL },
   ] },
   { section: 'Academics', items: [
     { to: '/courses', label: 'Courses', icon: BookOpen },
     { to: '/assignments', label: 'Assignments', icon: ClipboardList },
     { to: '/quizzes', label: 'Quizzes & Tests', icon: FileQuestion },
     { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
+    { to: '/exams', label: 'Examinations', icon: ScrollText },
     { to: '/grades', label: 'Grades', icon: GraduationCap },
     { to: '/feedback', label: 'Faculty Feedback', icon: Star },
+    { to: '/library', label: 'Library', icon: Library },
   ] },
   { section: 'Campus Life', items: [
     { to: '/feed', label: 'Discussions', icon: MessageSquare },
-    { to: '/events', label: 'Events', icon: PartyPopper },
+    { to: '/events', label: 'Events', icon: PartyPopper, roles: ALL },
     { to: '/clubs', label: 'Clubs & Chapters', icon: Users },
     { to: '/polls', label: 'Polls & Surveys', icon: Vote },
+    { to: '/placements', label: 'Placements', icon: Briefcase, roles: ['student', 'admin'] },
+    { to: '/alumni', label: 'Alumni', icon: HandHeart },
   ] },
   { section: 'Services', items: [
     { to: '/fees', label: 'Fees & Payments', icon: CreditCard, roles: ['student', 'admin'] },
+    { to: '/hostel', label: 'Hostel & Mess', icon: BedDouble, roles: ['student', 'admin'] },
     { to: '/gate-pass', label: 'Gate Pass', icon: DoorOpen },
-    { to: '/transport', label: 'Transport', icon: Bus },
-    { to: '/venues', label: 'Venue Booking', icon: Building2, roles: ['faculty', 'admin'] },
+    { to: '/transport', label: 'Transport', icon: Bus, roles: ALL },
+    { to: '/help', label: 'Help Center', icon: LifeBuoy, roles: ALL },
+    { to: '/venues', label: 'Venue Booking', icon: Building2, roles: STAFF },
+  ] },
+  { section: 'Staff', items: [
+    { to: '/hr', label: 'HR & Payroll', icon: BadgeIndianRupee, roles: STAFF },
+    { to: '/procurement', label: 'Procurement & Assets', icon: Package, roles: STAFF },
   ] },
   { section: 'Administration', items: [
+    { to: '/admissions', label: 'Admissions', icon: UserPlus, roles: ['admin'] },
     { to: '/admin/users', label: 'User Management', icon: UserCog, roles: ['admin'] },
     { to: '/admin/reports', label: 'Reports', icon: BarChart3, roles: ['admin'] },
+    { to: '/admin/audit', label: 'Audit Log', icon: History, roles: ['admin'] },
   ] },
 ]
 
@@ -94,7 +110,7 @@ export default function Layout() {
         </div>
         <nav className="nav">
           {NAV.map((sec) => {
-            const items = sec.items.filter((i) => !i.roles || i.roles.includes(user.role))
+            const items = sec.items.filter((i) => (i.roles ?? ['student', 'faculty', 'admin']).includes(user.role))
             if (!items.length) return null
             return (
               <div key={sec.section}>

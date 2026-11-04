@@ -199,3 +199,7 @@ tbody tr:hover { background: var(--surface-2); }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .hide-sm { display: none !important; }
 }
+
+/* Tables placed directly in a card or modal scroll inside it rather than widening the page. */
+.card, .modal-body { overflow-x: auto; }
+.badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

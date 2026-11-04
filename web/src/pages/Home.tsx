@@ -2,9 +2,16 @@ import { Link } from 'react-router-dom'
 import { BookOpen, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, Megaphone, PartyPopper, Users, UserX } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Progress, Stat } from '../components/ui'
-import { attendanceStats, courseName, coursesFor, DAYS, fmtDate, fmtDateTime, inr, timeAgo, userName } from '../lib'
+import { attendanceStats, courseName, coursesFor, DAYS, feeOutstanding, fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
+import ParentHome from './Parent'
 
 export default function Home() {
+  const user = useCurrentUser()!
+  if (user.role === 'parent') return <ParentHome />
+  return <StaffStudentHome />
+}
+
+function StaffStudentHome() {
   const db = useDB()
   const user = useCurrentUser()!
   const courses = coursesFor(db, user)
@@ -96,7 +103,7 @@ function StudentStats() {
   const att = attendanceStats(db, user.id)
   const courses = coursesFor(db, user)
   const pendingAssign = db.assignments.filter((a) => courses.some((c) => c.id === a.courseId) && a.dueAt > Date.now() && !db.submissions.some((s) => s.assignmentId === a.id && s.studentId === user.id)).length
-  const due = db.fees.filter((f) => f.studentId === user.id && !f.paidAt).reduce((s, f) => s + f.amount, 0)
+  const due = studentDues(db, user.id)
   const openQuizzes = db.quizzes.filter((q) => courses.some((c) => c.id === q.courseId) && q.opensAt < Date.now() && q.closesAt > Date.now() && !db.attempts.some((a) => a.quizId === q.id && a.studentId === user.id)).length
   return (
     <div className="grid grid-4">
@@ -136,8 +143,8 @@ function FacultyStats() {
 function AdminStats() {
   const db = useDB()
   const students = db.users.filter((u) => u.role === 'student')
-  const collected = db.fees.filter((f) => f.paidAt).reduce((s, f) => s + f.amount, 0)
-  const outstanding = db.fees.filter((f) => !f.paidAt).reduce((s, f) => s + f.amount, 0)
+  const collected = db.fees.reduce((s, f) => s + (f.paidAmount ?? (f.paidAt ? f.amount : 0)), 0)
+  const outstanding = db.fees.reduce((s, f) => s + feeOutstanding(f), 0)
   return (
     <div className="grid grid-4">
       <Link to="/admin/users" style={{ textDecoration: 'none', color: 'inherit' }}><Stat label="Students" value={students.length} hint={`${db.users.filter((u) => u.role === 'faculty').length} faculty`} icon={<Users size={22} />} /></Link>

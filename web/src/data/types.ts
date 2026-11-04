@@ -1,4 +1,4 @@
-export type Role = 'student' | 'faculty' | 'admin'
+export type Role = 'student' | 'faculty' | 'admin' | 'parent'
 export type AccountStatus = 'ACTIVE' | 'DEACTIVATED' | 'LOCKED'
 
 export interface User {
@@ -18,6 +18,11 @@ export interface User {
   credentialsMismatchCount: number
   lockedAtTime?: number
   avatarColor: string
+  wardIds?: string[] // parent accounts: children at this institution
+  cgpa?: number
+  backlogs?: number
+  basicSalary?: number // staff: monthly basic pay (INR)
+  hostelRoomId?: string
 }
 
 export interface Course {
@@ -150,6 +155,11 @@ export interface FeeItem {
   dueAt: number
   paidAt?: number
   txnId?: string
+  head?: 'Tuition' | 'Exam' | 'Hostel' | 'Transport' | 'Other'
+  scholarship?: number // amount waived
+  paidAmount?: number // supports instalments
+  installments?: { amount: number; dueAt: number; paidAt?: number; txnId?: string }[]
+  gateway?: string
 }
 
 export interface GatePass {
@@ -230,4 +240,269 @@ export interface DB {
   feedback: Feedback[]
   bookings: Booking[]
   notifications: Notification[]
+  // ---- ERP modules ----
+  applications: Application[]
+  scholarships: Scholarship[]
+  exams: Exam[]
+  results: ExamResult[]
+  revaluations: Revaluation[]
+  rooms: HostelRoom[]
+  hostelLeaves: HostelLeave[]
+  mealCoupons: MealCoupon[]
+  leaves: StaffLeave[]
+  payrollRuns: PayrollRun[]
+  purchaseRequests: PurchaseRequest[]
+  assets: Asset[]
+  tickets: Ticket[]
+  drives: PlacementDrive[]
+  books: Book[]
+  loans: BookLoan[]
+  alumni: Alumnus[]
+  refunds: Refund[]
+  audit: AuditEntry[]
+}
+
+/* ---------------- Admissions ---------------- */
+export type AppStage = 'ENQUIRY' | 'APPLIED' | 'VERIFIED' | 'SHORTLISTED' | 'OFFERED' | 'FEE_PAID' | 'ADMITTED' | 'REJECTED'
+export interface Application {
+  id: string
+  name: string
+  email: string
+  phone: string
+  program: string
+  qualifyingPct: number // 12th / qualifying exam %
+  entranceScore: number // out of 100
+  category: 'General' | 'OBC' | 'SC' | 'ST' | 'EWS'
+  documents: { name: string; status: 'PENDING' | 'VERIFIED' | 'REJECTED' }[]
+  stage: AppStage
+  meritScore?: number
+  rank?: number
+  scholarshipId?: string
+  offerFee?: number
+  studentId?: string // auto-generated user id once admitted
+  rollNo?: string
+  createdAt: number
+  history: { stage: AppStage; at: number; by: string }[]
+}
+export interface Scholarship {
+  id: string
+  name: string
+  kind: 'PERCENT' | 'FIXED'
+  value: number
+  minMerit: number // eligibility: merit score threshold
+}
+
+/* ---------------- Examinations ---------------- */
+export interface Exam {
+  id: string
+  courseId: string
+  title: string // e.g. "End Semester Examination"
+  date: string // YYYY-MM-DD
+  start: string
+  end: string
+  venue: string
+  maxMarks: number
+  minAttendance: number // eligibility gates
+  requireFeesCleared: boolean
+  minInternal: number // min internal % to be eligible
+  seating?: { studentId: string; room: string; seat: string }[]
+  invigilators?: { room: string; facultyId: string }[]
+  resultsPublished: boolean
+  grading: 'ABSOLUTE' | 'RELATIVE'
+}
+export interface ExamResult {
+  id: string
+  examId: string
+  studentId: string
+  marks: number
+}
+export interface Revaluation {
+  id: string
+  examId: string
+  studentId: string
+  reason: string
+  fee: number
+  status: 'REQUESTED' | 'UNDER_REVIEW' | 'REVISED' | 'NO_CHANGE'
+  oldMarks: number
+  newMarks?: number
+  createdAt: number
+}
+
+/* ---------------- Hostel & mess ---------------- */
+export interface HostelRoom {
+  id: string
+  block: string
+  number: string
+  capacity: number
+  occupants: string[]
+  type: 'AC' | 'Non-AC'
+  feePerSem: number
+}
+export interface HostelLeave {
+  id: string
+  studentId: string
+  reason: string
+  from: number
+  to: number
+  parentStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+  wardenStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+  createdAt: number
+}
+export interface MealCoupon {
+  id: string
+  studentId: string
+  date: string
+  meal: 'Breakfast' | 'Lunch' | 'Snacks' | 'Dinner'
+  code: string
+  redeemedAt?: number
+}
+
+/* ---------------- HR & payroll ---------------- */
+export interface StaffLeave {
+  id: string
+  staffId: string
+  type: 'Casual' | 'Sick' | 'Earned' | 'Duty' | 'Loss of Pay'
+  from: string
+  to: string
+  days: number
+  reason: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+  reviewedBy?: string
+}
+export interface Payslip {
+  staffId: string
+  basic: number
+  hra: number
+  da: number
+  gross: number
+  lopDays: number
+  lopDeduction: number
+  pf: number
+  esi: number
+  professionalTax: number
+  tds: number
+  net: number
+}
+export interface PayrollRun {
+  id: string
+  month: string // YYYY-MM
+  runAt: number
+  payslips: Payslip[]
+}
+
+/* ---------------- Procurement & assets ---------------- */
+export type PRStatus = 'PENDING_HOD' | 'PENDING_FINANCE' | 'PENDING_REGISTRAR' | 'APPROVED' | 'PO_ISSUED' | 'RECEIVED' | 'REJECTED'
+export interface PurchaseRequest {
+  id: string
+  title: string
+  category: 'IT Equipment' | 'Furniture' | 'Lab Equipment' | 'Stationery' | 'Sports'
+  quantity: number
+  unitCost: number
+  vendor: string
+  requestedBy: string
+  department: string
+  status: PRStatus
+  approvals: { level: string; by: string; at: number; decision: 'APPROVED' | 'REJECTED' }[]
+  poNumber?: string
+  warrantyMonths: number
+  createdAt: number
+}
+export interface Asset {
+  id: string
+  tag: string
+  name: string
+  category: PurchaseRequest['category']
+  purchaseRequestId?: string
+  location: string
+  assignedTo?: string
+  status: 'IN_STOCK' | 'ALLOTTED' | 'MAINTENANCE' | 'RETIRED'
+  purchasedAt: number
+  warrantyUntil: number
+  cost: number
+}
+
+/* ---------------- Help center ---------------- */
+export interface Ticket {
+  id: string
+  number: string
+  category: 'Grievance' | 'IT Support' | 'Facility Booking' | 'No-Dues Certificate' | 'Bonafide Certificate' | 'Maintenance'
+  subject: string
+  description: string
+  raisedBy: string
+  assignedTo?: string
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED'
+  priority: 'Low' | 'Medium' | 'High'
+  anonymous: boolean
+  createdAt: number
+  slaHours: number
+  comments: { by: string; text: string; at: number }[]
+}
+
+/* ---------------- Placements ---------------- */
+export interface PlacementDrive {
+  id: string
+  company: string
+  role: string
+  kind: 'Internship' | 'Full-time' | 'Project' | 'Top-tier'
+  ctc: string
+  minCgpa: number
+  maxBacklogs: number
+  deadline: number
+  description: string
+  applications: { studentId: string; status: 'APPLIED' | 'SHORTLISTED' | 'INTERVIEW' | 'SELECTED' | 'REJECTED'; slot?: number }[]
+}
+
+/* ---------------- Library ---------------- */
+export interface Book {
+  id: string
+  title: string
+  author: string
+  isbn: string
+  subject: string
+  copies: number
+  shelf: string
+  ebookUrl?: string
+  reservations: string[]
+}
+export interface BookLoan {
+  id: string
+  bookId: string
+  userId: string
+  issuedAt: number
+  dueAt: number
+  returnedAt?: number
+  fine?: number
+}
+
+/* ---------------- Alumni ---------------- */
+export interface Alumnus {
+  id: string
+  name: string
+  batch: number
+  program: string
+  company: string
+  role: string
+  city: string
+  mentor: boolean
+  email: string
+  mentees: string[]
+  donations: number
+}
+
+/* ---------------- Finance & audit ---------------- */
+export interface Refund {
+  id: string
+  feeId: string
+  studentId: string
+  amount: number
+  reason: string
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'PROCESSED'
+  createdAt: number
+}
+export interface AuditEntry {
+  id: string
+  at: number
+  actorId: string
+  action: string
+  detail: string
 }

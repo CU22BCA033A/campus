@@ -3,6 +3,15 @@
 A single-university campus platform (LMS + ERP + campus life), modelled on the
 feature set of Digii Campus. The branding, code and content are original.
 
+Like the original, modules are chained into gated workflows rather than standing alone:
+
+- **Admissions:** enquiry → application → document verification → merit list → offer letter (scholarship auto-matched) → fee → auto-generated student ID, fee plan and course enrolment
+- **Examinations:** eligibility gate (attendance, fees, internal marks) → hall ticket → seating plan + invigilators → marks → absolute/relative grading → results → re-evaluation
+- **Procurement:** purchase request → approvals by amount (HOD → Finance → Registrar) → purchase order → consignment received → assets auto-created in the register
+- **Hostel leave:** student request → parent approval → warden approval → gate pass issued
+- **HR:** staff leave → manager approval → loss-of-pay synced into payroll
+- **No-dues certificate:** a Help Center ticket checks accounts, library and hostel clearance automatically
+
 ## Run it
 
 ```bash
@@ -19,6 +28,7 @@ npm run build      # production build in web/dist
 | Student | `student@campus.edu` | `student123` |
 | Faculty | `faculty@campus.edu` | `faculty123` |
 | Admin | `admin@campus.edu` | `admin123` |
+| Parent (two wards) | `parent@campus.edu` | `parent123` |
 | First login (forced password change) | `new@campus.edu` | `welcome123` |
 | Deactivated account | `kavya.das@campus.edu` | `student123` |
 
@@ -42,12 +52,23 @@ All data is stored in the browser (localStorage). Use **avatar menu → Reset de
 | Events | RSVP, capacity | create events | ✓ |
 | Clubs & chapters | join / leave | | |
 | Polls & surveys | vote, live results | create polls | ✓ |
-| Fees & payments | pay (UPI / card / net banking, simulated), receipts | | outstanding dues, reminders |
+| Fees & payments | pay in full or 2 instalments, choose gateway (charge shown), receipts, refund requests | | dues, reminders (also to parents), scholarship plans & grants, refund approval |
+| Admissions | public application form (`#/apply`) | | pipeline by stage, document verification, merit list, offer letters, bulk CSV import, admit → student ID |
+| Examinations | eligibility with reasons, hall ticket, seat, grade sheet, SGPA, re-evaluation | enter marks for own courses | schedule, seating & invigilators, publish results, relative grading with small-class fallback, re-evaluation review |
+| Parent portal | | | parent: switch between wards, attendance, results, pay fees, approve hostel leave |
+| Hostel & mess | room, leave requests, QR meal coupons | | rooms, manual/auto allocation, warden approvals, mess counter (redeem coupons) |
+| HR & payroll | | leave balances, apply, payslips | leave approvals, payroll run (HRA/DA, PF, ESI, PT, TDS new regime, LOP), bank CSV |
+| Procurement & assets | | raise requests, HOD approval | approval chain, PO, receive → assets, allot/return/maintenance, warranty-expiry filter |
+| Help Center | tickets with SLA, anonymous grievances, bonafide/no-dues certificates | ✓ | assign, resolve, SLA breaches, printable certificates |
+| Placements | eligible drives (CGPA/backlogs), apply, status, interview slot | | drives, shortlist, schedule interviews, select |
+| Library | OPAC search, availability, reserve, renew, e-books, fines | ✓ | issue desk (roll no./barcode), returns with fines → fees, reservations queue |
+| Alumni | directory, request mentorship | ✓ | add alumni, record donations |
 | Gate pass | request, digital pass | approve / reject | approve / reject |
 | Transport | routes, stops, timings, register | ✓ | ✓ |
 | Venue booking | | book halls/labs by slot | ✓ |
 | User management | | | add users, activate/deactivate, unlock, reset password, "view as" |
 | Reports | | | attendance shortage, course averages, fee collection, CSV export |
+| Audit log | | | every sensitive action (logins, approvals, payments, grades…), filter, CSV export |
 
 Notifications (bell icon) are created by every action, such as a new assignment, a grade, an approved gate pass, an absence, or a notice.
 
@@ -83,11 +104,17 @@ web/src
 └── pages/               one file per module
 ```
 
+## Beyond the original (gaps from the feature research, now filled)
+
+Library/OPAC, alumni network, statutory payroll (PF/ESI/PT/TDS), refund workflow, named and
+selectable payment gateways, interview scheduling for placements, and an audit trail. None of
+these is documented in the original's public materials.
+
 ## Roadmap
 
 - Backend API (`/rest/...`) with a real database, to replace the localStorage store
 - Microsoft SSO with `@azure/msal-browser`, plus Outlook calendar sync
-- Real payment gateway (Razorpay / PayU)
-- File uploads (assignments, materials), originality check
-- Admissions, examinations / hall tickets, placements, library, hostel
+- Live payment-gateway keys; SMS/email/WhatsApp delivery for notifications
+- File storage for uploads; Turnitin originality check
+- Native general ledger (instead of Tally/Zoho sync), document management with e-signature, GPS bus tracking
 - Mobile app (PWA)

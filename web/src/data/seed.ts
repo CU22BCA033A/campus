@@ -1,4 +1,5 @@
 import type { DB, User } from './types'
+import { createErpSeed, parentUser } from './seedErp'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -30,6 +31,8 @@ const students: User[] = firstNames.map((f, i) => ({
   firstLogin: false,
   credentialsMismatchCount: 0,
   avatarColor: colors[i % colors.length],
+  cgpa: [8.42, 7.9, 6.8, 8.9, 7.2, 9.1, 6.2, 8.1, 7.5, 8.6, 5.9, 7.0][i],
+  backlogs: [0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0][i],
 }))
 
 const faculty: User[] = [
@@ -45,6 +48,7 @@ const faculty: User[] = [
   firstLogin: false,
   credentialsMismatchCount: 0,
   avatarColor: colors[(i + 3) % colors.length],
+  basicSalary: [95000, 72000, 88000][i],
 }))
 
 const admin: User = {
@@ -58,6 +62,7 @@ const admin: User = {
   firstLogin: false,
   credentialsMismatchCount: 0,
   avatarColor: '#1f2328',
+  basicSalary: 65000,
 }
 
 const newStudent: User = {
@@ -75,8 +80,9 @@ const allStudentIds = [...students.map((s) => s.id), newStudent.id]
 
 export function createSeed(): DB {
   return {
-    version: 1,
-    users: [...students, newStudent, ...faculty, admin],
+    version: 2,
+    users: [...students, newStudent, ...faculty, admin, parentUser],
+    ...createErpSeed(),
     courses: [
       { id: 'c1', code: 'BCA501', name: 'Web Technologies', facultyId: 'f1', credits: 4, semester: 5, description: 'HTML, CSS, JavaScript, React and REST APIs for modern web applications.', studentIds: allStudentIds },
       { id: 'c2', code: 'BCA502', name: 'Database Management Systems', facultyId: 'f2', credits: 4, semester: 5, description: 'Relational model, SQL, normalisation, transactions and indexing.', studentIds: allStudentIds },
@@ -172,11 +178,15 @@ export function createSeed(): DB {
       { id: 'cl3', name: 'Entrepreneurship Cell', description: 'Startup talks, pitch days and incubation support.', members: ['s6'], facultyAdvisorId: 'f2' },
       { id: 'cl4', name: 'NSS', description: 'Community service and social outreach.', members: [], facultyAdvisorId: 'f3' },
     ],
-    fees: allStudentIds.flatMap((sid) => [
-      { id: `fee-${sid}-1`, studentId: sid, title: 'Tuition fee – Semester 5', amount: 75000, dueAt: d(10), paidAt: sid === 's2' ? d(-4) : undefined, txnId: sid === 's2' ? 'TXN84213' : undefined },
-      { id: `fee-${sid}-2`, studentId: sid, title: 'Examination fee', amount: 2500, dueAt: d(5) },
-      { id: `fee-${sid}-3`, studentId: sid, title: 'Tuition fee – Semester 4', amount: 75000, dueAt: d(-170), paidAt: d(-172), txnId: `TXN${sid.toUpperCase()}4` },
-    ]),
+    fees: allStudentIds.flatMap((sid, i) => {
+      // Roughly half the class has already cleared this semester's fees.
+      const cleared = i % 2 === 1
+      return [
+        { id: `fee-${sid}-1`, studentId: sid, title: 'Tuition fee – Semester 5', amount: 75000, dueAt: d(10), head: 'Tuition' as const, ...(cleared ? { paidAt: d(-4 - i), paidAmount: 75000, txnId: `TXN8421${i}`, gateway: 'Razorpay' } : {}) },
+        { id: `fee-${sid}-2`, studentId: sid, title: 'Examination fee', amount: 2500, dueAt: d(5), head: 'Exam' as const, ...(cleared ? { paidAt: d(-3 - i), paidAmount: 2500, txnId: `TXN9512${i}`, gateway: 'PayU' } : {}) },
+        { id: `fee-${sid}-3`, studentId: sid, title: 'Tuition fee – Semester 4', amount: 75000, dueAt: d(-170), paidAt: d(-172), paidAmount: 75000, txnId: `TXN${sid.toUpperCase()}4`, head: 'Tuition' as const },
+      ]
+    }),
     gatePasses: [
       { id: 'g1', studentId: 's1', reason: 'Medical appointment', outAt: d(-4, 14), returnAt: d(-4, 18), status: 'APPROVED', reviewedBy: 'a1' },
       { id: 'g2', studentId: 's3', reason: 'Family function', outAt: d(1, 16), returnAt: d(2, 20), status: 'PENDING' },

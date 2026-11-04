@@ -8,7 +8,17 @@ const SESSION_KEY = 'campus-session-v1'
 function load(): DB {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw) as DB
+    if (raw) {
+      // Migrate older saved data: add any collections introduced since it was saved.
+      const saved = JSON.parse(raw) as DB
+      const fresh = createSeed()
+      for (const k of Object.keys(fresh) as (keyof DB)[]) {
+        if (saved[k] === undefined) (saved as unknown as Record<string, unknown>)[k] = fresh[k]
+      }
+      if (!saved.users.some((u) => u.role === 'parent')) saved.users.push(...fresh.users.filter((u) => u.role === 'parent'))
+      saved.version = fresh.version
+      return saved
+    }
   } catch {
     /* storage unavailable or corrupt: fall back to seed */
   }
@@ -77,6 +87,14 @@ export function useCurrentUser(): User | null {
 
 export function uid(prefix: string) {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+/** Append an audit-trail entry (who did what, when). */
+export function audit(actorId: string, action: string, detail: string) {
+  update((d) => {
+    d.audit.unshift({ id: uid('au'), at: Date.now(), actorId, action, detail })
+    if (d.audit.length > 1000) d.audit.length = 1000
+  })
 }
 
 export function notify(userIds: string[], text: string, link: string) {
@@ -152,6 +170,7 @@ export function login(email: string, password: string): LoginResponse {
 
   sessionUserId = user.id
   emit()
+  audit(user.id, 'LOGIN', `${user.name} signed in`)
   return { ...base, message: 'SUCCESS', user, token: `demo.${user.id}` }
 }
 
