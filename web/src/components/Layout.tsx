@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, BookOpen, Bus, CalendarDays, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, GraduationCap,
   Home, LogOut, Megaphone, Menu, MessageSquare, PartyPopper, Search, Star, Users, Vote, Building2, UserCog, BarChart3, RotateCcw,
-  ScrollText, School, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
+  ScrollText, School, FileSpreadsheet, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
 } from 'lucide-react'
 import { logout, resetDemoData, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar } from './ui'
@@ -26,6 +26,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     { to: '/quizzes', label: 'Quizzes & Tests', icon: FileQuestion },
     { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
     { to: '/exams', label: 'Examinations', icon: ScrollText },
+    { to: '/results', label: 'Result Sheets', icon: FileSpreadsheet },
     { to: '/grades', label: 'Grades', icon: GraduationCap },
     { to: '/feedback', label: 'Faculty Feedback', icon: Star },
     { to: '/library', label: 'Library', icon: Library },

@@ -14,6 +14,16 @@ function load(): DB {
       const fresh = createSeed()
       // Version 3 restructured students into classes; older demo data is replaced rather than patched.
       if ((saved.version ?? 1) < 3) return fresh
+      if (saved.version < 5) {
+        // Version 5: hostels with wardens, student residence/gender, result sheets and exam evaluators.
+        for (const u of saved.users) {
+          const f = fresh.users.find((x) => x.id === u.id)
+          if (f && u.role === 'student') { u.gender ??= f.gender; u.residence ??= f.residence; u.backlogCourses ??= f.backlogCourses }
+        }
+        for (const r of saved.rooms) { const f = fresh.rooms.find((x) => x.id === r.id); if (!r.hostelId) { r.hostelId = f?.hostelId ?? (r.block.includes('Girls') ? 'h-girls' : 'h-boys'); r.block = f?.block ?? r.block } }
+        for (const e of saved.exams) { const f = fresh.exams.find((x) => x.id === e.id); e.evaluatorId ??= f?.evaluatorId ?? saved.courses.find((c) => c.id === e.courseId)?.facultyId; e.kind ??= 'Regular' }
+        for (const e of fresh.exams) if (!saved.exams.some((x) => x.id === e.id)) saved.exams.push(e)
+      }
       if (saved.version < 4) {
         // Version 4: multi-part assignments. Refresh untouched demo assignments and add the new ones.
         for (const a of fresh.assignments) {

@@ -21,6 +21,10 @@ export interface User {
   avatarColor: string
   classId?: string // students: their class
   batch?: number // students: admission year
+  gender?: 'Male' | 'Female'
+  residence?: 'HOSTEL' | 'DAY_SCHOLAR' // students: set by the Admission department / Registrar
+  backlogCourses?: string[] // students: courses failed and not yet cleared
+  hostelId?: string // hostel-office staff: the hostel they are warden of (none = chief warden, all hostels)
   office?: Office // admin accounts: the office they work in (defaults to 'super')
   wardIds?: string[] // parent accounts: children at this institution
   cgpa?: number
@@ -295,7 +299,9 @@ export interface DB {
   exams: Exam[]
   results: ExamResult[]
   revaluations: Revaluation[]
+  hostels: Hostel[]
   rooms: HostelRoom[]
+  resultSheets: ResultSheet[]
   hostelLeaves: HostelLeave[]
   mealCoupons: MealCoupon[]
   leaves: StaffLeave[]
@@ -321,6 +327,8 @@ export interface Application {
   email: string
   phone: string
   program: string
+  gender?: 'Male' | 'Female'
+  residence?: 'HOSTEL' | 'DAY_SCHOLAR'
   qualifyingPct: number // 12th / qualifying exam %
   entranceScore: number // out of 100
   category: 'General' | 'OBC' | 'SC' | 'ST' | 'EWS'
@@ -360,6 +368,8 @@ export interface Exam {
   invigilators?: { room: string; facultyId: string }[]
   resultsPublished: boolean
   grading: 'ABSOLUTE' | 'RELATIVE'
+  evaluatorId?: string // professor allotted to evaluate this exam and enter marks
+  kind?: 'Regular' | 'Supplementary'
 }
 export interface ExamResult {
   id: string
@@ -380,9 +390,16 @@ export interface Revaluation {
 }
 
 /* ---------------- Hostel & mess ---------------- */
+export interface Hostel {
+  id: string
+  name: string
+  gender: 'Boys' | 'Girls'
+  wardenId?: string // block warden with management access to this hostel
+}
 export interface HostelRoom {
   id: string
-  block: string
+  hostelId: string
+  block: string // display name (kept for older data)
   number: string
   capacity: number
   occupants: string[]
@@ -585,4 +602,29 @@ export interface Appointment {
   status: 'REQUESTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'DECLINED'
   note?: string // message from the office (e.g. meeting link or room)
   createdAt: number
+}
+
+
+/* ---------------- Result sheets (Registrar of Evaluation) ---------------- */
+/** What counts towards internal marks: assignments, quizzes or other exams (e.g. mid-semester tests). */
+export interface InternalComponent { kind: 'assignment' | 'quiz' | 'exam'; id: string }
+export interface ResultSheet {
+  id: string
+  courseId: string
+  semester: number
+  term: 'Regular' | 'Supplementary'
+  internalMax: number
+  externalMax: number
+  scaleInternals: boolean // scale the components' total to internalMax (else cap at internalMax)
+  minExternalPct: number // pass rules
+  minTotalPct: number
+  components: InternalComponent[]
+  examId?: string // external (end-semester / supplementary) exam whose marks fill the External column
+  evaluatorId: string
+  extraStudentIds: string[] // backlog / re-exam registrations from other classes or semesters
+  overrides: Record<string, { components?: Record<string, number>; internal?: number; absent?: boolean }>
+  status: 'DRAFT' | 'SUBMITTED' | 'PUBLISHED'
+  submittedAt?: number
+  publishedAt?: number
+  publishedBy?: string
 }

@@ -9,7 +9,7 @@ const d = (offsetDays: number, hour = 10) => {
 }
 const iso = (offsetDays: number) => new Date(now + offsetDays * DAY).toISOString().slice(0, 10)
 
-type ErpPart = Pick<DB, 'services' | 'appointments' | 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
+type ErpPart = Pick<DB, 'hostels' | 'resultSheets' | 'services' | 'appointments' | 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
 
 /** Extra users the ERP modules need (parent, librarian-style staff etc.). */
 export const parentUser: User = {
@@ -43,7 +43,14 @@ export const officeStaff: User[] = [
   officer('a8', 'Arjun Nair (Placement Officer)', 'placement@campus.edu', 'placement', 75000, '#6b3fa0'),
   officer('a9', 'Dr. Farah Siddiqui (Dean, Student Affairs)', 'studentaffairs@campus.edu', 'studentAffairs', 98000, '#0f766e'),
   officer('a10', 'Kiran Desai (Admissions Officer)', 'admissions@campus.edu', 'admissions', 70000, '#2563a8'),
+  { ...officer('a11', 'Ravi Shankar (Warden, Boys Hostel)', 'warden.boys@campus.edu', 'hostel', 48000, '#2563a8'), password: 'wardenboys123', hostelId: 'h-boys' },
+  { ...officer('a12', 'Sunita Pai (Warden, Girls Hostel)', 'warden.girls@campus.edu', 'hostel', 48000, '#be185d'), password: 'wardengirls123', hostelId: 'h-girls' },
 ]
+
+const sheet = (id: string, courseId: string, semester: number, examId: string | undefined, evaluatorId: string, components: DB['resultSheets'][number]['components'], status: DB['resultSheets'][number]['status'] = 'DRAFT', overrides: DB['resultSheets'][number]['overrides'] = {}): DB['resultSheets'][number] => ({
+  id, courseId, semester, term: 'Regular', internalMax: 40, externalMax: 60, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components, examId, evaluatorId,
+  extraStudentIds: [], overrides, status, ...(status === 'PUBLISHED' ? { submittedAt: d(-4), publishedAt: d(-3), publishedBy: 'a6' } : {}),
+})
 
 export function createErpSeed(): ErpPart {
   const apps: DB['applications'] = [
@@ -62,13 +69,15 @@ export function createErpSeed(): ErpPart {
       { id: 'sc3', name: 'Sports Quota Grant', kind: 'FIXED', value: 20000, minMerit: 60 },
     ],
     exams: [
-      { id: 'ex1', courseId: 'c1', title: 'Mid-Semester Examination', date: iso(-10), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 75, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
-      { id: 'ex2', courseId: 'c2', title: 'Mid-Semester Examination', date: iso(-9), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 75, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
-      { id: 'ex3', courseId: 'c1', title: 'End Semester Examination', date: iso(12), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'RELATIVE' },
-      { id: 'ex4', courseId: 'c2', title: 'End Semester Examination', date: iso(14), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE' },
-      { id: 'ex6', courseId: 'c8', title: 'End Semester Examination', date: iso(-8), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
-      { id: 'ex7', courseId: 'c9', title: 'End Semester Examination', date: iso(-6), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
-      { id: 'ex5', courseId: 'c3', title: 'End Semester Examination', date: iso(16), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE' },
+      { id: 'ex1', courseId: 'c1', title: 'Mid-Semester Examination', date: iso(-10), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 75, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f1', kind: 'Regular' },
+      { id: 'ex2', courseId: 'c2', title: 'Mid-Semester Examination', date: iso(-9), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 75, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
+      { id: 'ex3', courseId: 'c1', title: 'End Semester Examination', date: iso(12), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'RELATIVE', evaluatorId: 'f1', kind: 'Regular' },
+      { id: 'ex4', courseId: 'c2', title: 'End Semester Examination', date: iso(14), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
+      { id: 'ex6', courseId: 'c8', title: 'End Semester Examination', date: iso(-8), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f4', kind: 'Regular' },
+      { id: 'ex7', courseId: 'c9', title: 'End Semester Examination', date: iso(-6), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f4', kind: 'Regular' },
+      { id: 'ex8', courseId: 'c4', title: 'End Semester Examination', date: iso(18), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f3', kind: 'Regular' },
+      { id: 'ex9', courseId: 'c5', title: 'End Semester Examination', date: iso(20), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f1', kind: 'Regular' },
+      { id: 'ex5', courseId: 'c3', title: 'End Semester Examination', date: iso(16), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
     ],
     results: [
       ...['s19', 's20', 's21', 's22'].flatMap((sid, i) => [
@@ -80,13 +89,17 @@ export function createErpSeed(): ErpPart {
       { id: `r-ex2-${sid}`, examId: 'ex2', studentId: sid, marks: 19 + ((i * 11) % 30) },
     ])],
     revaluations: [],
+    hostels: [
+      { id: 'h-boys', name: 'Aryabhata Hostel (Boys)', gender: 'Boys', wardenId: 'a11' },
+      { id: 'h-girls', name: 'Gargi Hostel (Girls)', gender: 'Girls', wardenId: 'a12' },
+    ],
     rooms: [
-      { id: 'rm1', block: 'A (Boys)', number: 'A-101', capacity: 2, occupants: ['s1'], type: 'AC', feePerSem: 55000 },
-      { id: 'rm2', block: 'A (Boys)', number: 'A-102', capacity: 2, occupants: ['s3', 's5'], type: 'AC', feePerSem: 55000 },
-      { id: 'rm3', block: 'A (Boys)', number: 'A-103', capacity: 3, occupants: [], type: 'Non-AC', feePerSem: 38000 },
-      { id: 'rm4', block: 'B (Girls)', number: 'B-201', capacity: 2, occupants: ['s2'], type: 'AC', feePerSem: 55000 },
-      { id: 'rm5', block: 'B (Girls)', number: 'B-202', capacity: 3, occupants: ['s4'], type: 'Non-AC', feePerSem: 38000 },
-      { id: 'rm6', block: 'B (Girls)', number: 'B-203', capacity: 2, occupants: [], type: 'AC', feePerSem: 55000 },
+      { id: 'rm1', hostelId: 'h-boys', block: 'Aryabhata Hostel (Boys)', number: 'A-101', capacity: 2, occupants: ['s1'], type: 'AC', feePerSem: 55000 },
+      { id: 'rm2', hostelId: 'h-boys', block: 'Aryabhata Hostel (Boys)', number: 'A-102', capacity: 2, occupants: ['s3', 's5'], type: 'AC', feePerSem: 55000 },
+      { id: 'rm3', hostelId: 'h-boys', block: 'Aryabhata Hostel (Boys)', number: 'A-103', capacity: 3, occupants: [], type: 'Non-AC', feePerSem: 38000 },
+      { id: 'rm4', hostelId: 'h-girls', block: 'Gargi Hostel (Girls)', number: 'B-201', capacity: 2, occupants: ['s2'], type: 'AC', feePerSem: 55000 },
+      { id: 'rm5', hostelId: 'h-girls', block: 'Gargi Hostel (Girls)', number: 'B-202', capacity: 3, occupants: ['s4'], type: 'Non-AC', feePerSem: 38000 },
+      { id: 'rm6', hostelId: 'h-girls', block: 'Gargi Hostel (Girls)', number: 'B-203', capacity: 2, occupants: [], type: 'AC', feePerSem: 55000 },
     ],
     hostelLeaves: [
       { id: 'hl1', studentId: 's1', reason: 'Going home for the weekend', from: d(2, 17), to: d(4, 19), parentStatus: 'PENDING', wardenStatus: 'PENDING', createdAt: d(-0.2) },
@@ -139,6 +152,15 @@ export function createErpSeed(): ErpPart {
       { id: 'al4', name: 'Fatima Sheikh', batch: 2021, program: 'B.Sc Data Science', company: 'Amazon', role: 'Data Scientist', city: 'Hyderabad', mentor: true, email: 'fatima.s@alumni.campus.edu', mentees: [], donations: 25000 },
     ],
     refunds: [],
+    resultSheets: [
+      sheet('rs-c1', 'c1', 5, 'ex3', 'f1', [{ kind: 'exam', id: 'ex1' }, { kind: 'assignment', id: 'as1' }, { kind: 'assignment', id: 'as5' }]),
+      sheet('rs-c2', 'c2', 5, 'ex4', 'f2', [{ kind: 'exam', id: 'ex2' }, { kind: 'assignment', id: 'as2' }, { kind: 'assignment', id: 'as4' }, { kind: 'quiz', id: 'q1' }]),
+      sheet('rs-c3', 'c3', 5, 'ex5', 'f2', [{ kind: 'assignment', id: 'as3' }]),
+      sheet('rs-c4', 'c4', 5, 'ex8', 'f3', []),
+      sheet('rs-c5', 'c5', 5, 'ex9', 'f1', []),
+      sheet('rs-c8', 'c8', 5, 'ex6', 'f4', [], 'PUBLISHED', { s19: { internal: 32 }, s20: { internal: 28 }, s21: { internal: 18 }, s22: { internal: 36 } }),
+      sheet('rs-c9', 'c9', 5, 'ex7', 'f4', [], 'PUBLISHED', { s19: { internal: 34 }, s20: { internal: 30 }, s21: { internal: 26 }, s22: { internal: 37 } }),
+    ],
     services: [
       { id: 'sv1', title: 'Counselling Centre appointment', description: 'Confidential one-to-one session with a qualified counsellor for stress, anxiety, relationships or anything on your mind.', office: 'studentAffairs', category: 'Wellbeing', mode: 'In person or online', location: 'Wellness Centre, Block C', durationMin: 45, slots: [1, 2, 3, 4, 5].flatMap((day) => [{ day, start: '10:00' }, { day, start: '14:00' }, { day, start: '16:00' }]), maxPerSlot: 1, confidential: true, active: true, createdBy: 'a9' },
       { id: 'sv2', title: 'Meet the Vice-Chancellor', description: 'Open-house slot for student representatives and individual students to share ideas or concerns with the Vice-Chancellor.', office: 'registrar', category: 'Leadership', mode: 'In person', location: 'VC Office, Admin Block', durationMin: 15, slots: [{ day: 3, start: '15:00' }, { day: 3, start: '15:15' }, { day: 3, start: '15:30' }], maxPerSlot: 1, confidential: false, active: true, createdBy: 'a2' },

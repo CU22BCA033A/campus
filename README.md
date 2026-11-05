@@ -30,7 +30,9 @@ npm run build      # production build in web/dist
 | System administrator (everything) | `admin@campus.edu` | `admin123` |
 | Registrar office | `registrar@campus.edu` | `registrar123` |
 | Finance & accounts | `finance@campus.edu` | `finance123` |
-| Hostel warden | `warden@campus.edu` | `warden123` |
+| Chief warden (all hostels) | `warden@campus.edu` | `warden123` |
+| Boys hostel warden | `warden.boys@campus.edu` | `wardenboys123` |
+| Girls hostel warden | `warden.girls@campus.edu` | `wardengirls123` |
 | Human resources | `hr@campus.edu` | `hr123` |
 | Registrar of Evaluation | `exams@campus.edu` | `exams123` |
 | Admission Department | `admissions@campus.edu` | `admissions123` |
@@ -85,6 +87,35 @@ spreadsheet, image, ZIP or any), MCQ with one correct option, and MCQ with multi
 options (full marks only for exactly the right set). MCQ parts are marked on submission; an
 all-MCQ assignment is marked instantly. Older single-answer assignments keep working.
 Logic lives in `web/src/assignments.ts`.
+
+## Result sheets (internal + external)
+
+Each course offering has a **result sheet**. The Registrar of Evaluation creates the
+semester's exams for a class in one go and allots an evaluator (professor) per course, or
+sets up sheets directly. On the sheet:
+
+- **Internal**: tick the assignments, quizzes and tests that count; each becomes a column and
+  together they make the internal mark (scaled to the internal maximum, or added and capped).
+- **External**: the evaluator enters the end-semester exam marks, scaled to the external maximum.
+- **Final** = internal + external → grade; pass needs the minimum external % and total %.
+- Internal/external maxima, pass rules, the internals selection and any single cell can be
+  edited (manual edits are highlighted and can be reset).
+- Professors fill the sheet and **submit**; the office reviews, returns or **publishes** (per
+  course or the whole class). Publishing records failed courses as **backlogs**.
+- **Backlog registration** re-registers a student for a course's supplementary exam. The
+  internal mark carries over, the course shows on their results as a *Backlog* attempt
+  (whatever semester it came from), and passing it clears the backlog.
+
+Logic lives in `web/src/results.ts`.
+
+## Hostels
+
+Boys and girls hostels each have a block warden who manages only that hostel (rooms, add
+room, allotment, waiting list, leave approvals, mess). The chief warden manages all hostels,
+adds hostels and assigns wardens. The Admission department and Registrar set each student's
+gender and **hostel / day scholar** status (also captured on the application form); hostel
+students join the matching hostel's waiting list and that warden is notified. Day scholars
+are never allotted rooms. Logic lives in `web/src/hostels.ts`.
 
 ## Help Center services
 

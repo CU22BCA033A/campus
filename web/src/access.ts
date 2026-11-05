@@ -45,6 +45,7 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/quizzes': LEARNING,
   '/attendance': ['student', 'faculty', 'exam', 'super'],
   '/exams': ['student', 'faculty', 'exam', 'super'],
+  '/results': ['faculty', 'exam', 'super'],
   '/grades': ['student', 'faculty', 'exam', 'super'],
   '/feedback': ['student', 'faculty', 'registrar', 'super'],
   '/library': ['student', 'faculty', 'library', 'super'],
@@ -75,6 +76,7 @@ export function canAccess(u: User, path: string) {
 const CAPS = {
   manageAdmissions: ['admissions', 'registrar', 'super'],
   editStudentProfiles: STUDENT_RECORDS,
+  setResidence: ['admissions', 'registrar', 'super'], // hostel or day scholar
   manageClasses: ['exam', 'super'],
   manageCourses: ['exam', 'super'],
   promoteStudents: ['exam', 'super'],

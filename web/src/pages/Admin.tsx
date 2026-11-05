@@ -16,6 +16,7 @@ export function AdminUsers() {
   const [q, setQ] = useState('')
   const [role, setRole] = useState<'all' | Role>('all')
   const [classF, setClassF] = useState('all')
+  const [resF, setResF] = useState<'all' | 'HOSTEL' | 'DAY_SCHOLAR'>('all')
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
   const [draft, setDraft] = useState({ name: '', email: '', role: (can(me, 'editStudentProfiles') ? 'student' : 'faculty') as Role, office: 'registrar' as Office, department: 'Computer Applications', rollNo: '', classId: db.classes[0]?.id ?? '' })
@@ -24,7 +25,7 @@ export function AdminUsers() {
   const canCreate = (r: Role) => (r === 'student' || r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
   const roles = (['student', 'parent', 'faculty', 'admin'] as Role[]).filter(visibleRole)
   const users = db.users
-    .filter((u) => visibleRole(u.role) && (role === 'all' || u.role === role) && (classF === 'all' || u.classId === classF))
+    .filter((u) => visibleRole(u.role) && (role === 'all' || u.role === role) && (classF === 'all' || u.classId === classF) && (resF === 'all' || u.residence === resF))
     .filter((u) => matches(q, u.name, u.email, u.rollNo, u.phone, u.department, classLabel(db.classes.find((c) => c.id === u.classId))))
   const statusAllowed = (u: User) => canCreate(u.role) && u.id !== me.id
 
@@ -54,6 +55,7 @@ export function AdminUsers() {
               {db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
             </select>
           )}
+          {roles.includes('student') && <select className="select" style={{ width: 'auto' }} value={resF} onChange={(e) => setResF(e.target.value as typeof resF)} aria-label="Accommodation"><option value="all">Hostel &amp; day scholars</option><option value="HOSTEL">Hostel</option><option value="DAY_SCHOLAR">Day scholars</option></select>}
           <span className="small muted">{users.length} result(s)</span>
         </div>
         <div className="table-wrap">
@@ -64,7 +66,7 @@ export function AdminUsers() {
                 <tr key={u.id}>
                   <td><div className="row gap"><Avatar name={u.name} color={u.avatarColor} size={30} /><div><Link to={`/people/${u.id}`} style={{ fontWeight: 600 }}>{u.name}</Link><div className="small muted">{u.email}</div></div></div></td>
                   <td><Badge tone={u.role === 'admin' ? 'danger' : u.role === 'faculty' ? 'brand' : u.role === 'parent' ? 'accent' : 'info'}>{personaLabel(u)}</Badge></td>
-                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.role === 'parent' ? `Wards: ${(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ')}` : u.role === 'student' ? classLabel(db.classes.find((c) => c.id === u.classId)) : u.department}</div></td>
+                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.role === 'parent' ? `Wards: ${(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ')}` : u.role === 'student' ? classLabel(db.classes.find((c) => c.id === u.classId)) : u.department}</div>{u.role === 'student' && <div className="row gap" style={{ marginTop: 2 }}>{u.gender && <Badge>{u.gender}</Badge>}<Badge tone={u.residence === 'HOSTEL' ? 'accent' : 'neutral'}>{u.residence === 'HOSTEL' ? 'Hostel' : u.residence === 'DAY_SCHOLAR' ? 'Day scholar' : 'Accommodation not set'}</Badge></div>}</td>
                   <td><Badge tone={u.status === 'ACTIVE' ? 'success' : u.status === 'LOCKED' ? 'warning' : 'danger'}>{u.status}</Badge>{u.firstLogin && <> <Badge tone="accent">First login</Badge></>}</td>
                   <td>
                     <div className="row gap">

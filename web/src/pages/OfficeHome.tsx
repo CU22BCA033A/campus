@@ -5,7 +5,8 @@ import { Badge, Card, Empty, Stat } from '../components/ui'
 import { OFFICES, persona, TICKET_OFFICE } from '../access'
 import { attendanceStats, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo, userName } from '../lib'
 import { classCourses, classLabel, classResults } from '../classes'
-import type { DB, Office } from '../data/types'
+import { waitingList } from '../hostels'
+import type { DB, Office, User } from '../data/types'
 
 interface Task { text: string; sub?: string; to: string; tone?: 'warning' | 'danger' | 'info' }
 interface OfficeView {
@@ -16,7 +17,7 @@ interface OfficeView {
 
 const now = () => Date.now()
 
-function view(db: DB, office: Office): OfficeView {
+function view(db: DB, office: Office, user?: User): OfficeView {
   const tickets = db.tickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status) && (office === 'super' || TICKET_OFFICE[t.category] === office))
   const ticketTasks: Task[] = tickets.map((t) => ({ text: `${t.number}: ${t.subject}`, sub: `${t.category} · ${timeAgo(t.createdAt)}`, to: '/help', tone: t.priority === 'High' ? 'danger' : 'info' }))
   const students = db.users.filter((u) => u.role === 'student')
@@ -68,24 +69,29 @@ function view(db: DB, office: Office): OfficeView {
       }
     }
     case 'hostel': {
-      const beds = db.rooms.reduce((s, r) => s + r.capacity, 0)
-      const occupied = db.rooms.reduce((s, r) => s + r.occupants.length, 0)
-      const leaves = db.hostelLeaves.filter((l) => l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING')
+      // Block wardens see only their hostel; the chief warden sees all.
+      const scope = user && user.hostelId ? db.hostels.filter((h) => h.id === user.hostelId) : db.hostels
+      const rooms = db.rooms.filter((r) => scope.some((h) => h.id === r.hostelId))
+      const beds = rooms.reduce((s, r) => s + r.capacity, 0)
+      const occupied = rooms.reduce((s, r) => s + r.occupants.length, 0)
+      const residents = new Set(rooms.flatMap((r) => r.occupants))
+      const waiting = scope.flatMap((h) => waitingList(db, h.id))
+      const leaves = db.hostelLeaves.filter((l) => residents.has(l.studentId) && l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING')
       const passes = db.gatePasses.filter((g) => g.status === 'PENDING')
-      const today = new Date().toISOString().slice(0, 10)
       return {
         stats: [
           { label: 'Occupancy', value: `${occupied}/${beds}`, hint: `${beds - occupied} beds free`, to: '/hostel' },
           { label: 'Leave awaiting warden', value: leaves.length, tone: 'warning', to: '/hostel' },
           { label: 'Gate passes pending', value: passes.length, tone: 'accent', to: '/gate-pass' },
-          { label: 'Meals served today', value: db.mealCoupons.filter((c) => c.date === today && c.redeemedAt).length, tone: 'success', to: '/hostel' },
+          { label: 'Waiting for a room', value: waiting.length, tone: 'danger', to: '/hostel' },
         ],
         tasks: [
+          ...waiting.map((st) => ({ text: `Allot a room: ${st.name}`, sub: `${st.rollNo} · ${st.gender} · opted for hostel`, to: '/hostel', tone: 'warning' as const })),
           ...leaves.map((l) => ({ text: `Hostel leave: ${userName(db, l.studentId)}`, sub: `${l.reason} · parent approved`, to: '/hostel', tone: 'warning' as const })),
           ...passes.map((g) => ({ text: `Gate pass: ${userName(db, g.studentId)}`, sub: g.reason, to: '/gate-pass', tone: 'info' as const })),
           ...apptTasks, ...ticketTasks,
         ],
-        shortcuts: [{ to: '/hostel', label: 'Rooms & allocation' }, { to: '/gate-pass', label: 'Gate passes' }, { to: '/help', label: 'Maintenance requests' }],
+        shortcuts: [{ to: '/hostel', label: scope.length === 1 ? scope[0].name : 'Rooms & allocation' }, { to: '/gate-pass', label: 'Gate passes' }, { to: '/help', label: 'Maintenance requests' }],
       }
     }
     case 'hr': {
@@ -125,11 +131,13 @@ function view(db: DB, office: Office): OfficeView {
           ...noSeating.map((e) => ({ text: `Generate seating: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, sub: fmtDate(e.date), to: '/exams', tone: 'warning' as const })),
           ...toPublish.map((e) => ({ text: `Publish results: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, to: '/exams', tone: 'info' as const })),
           ...reval.map((r) => ({ text: `Re-evaluation: ${userName(db, r.studentId)}`, sub: r.reason, to: '/exams' })),
-          ...db.classes.filter((c) => classResults(db, c).ready).map((c) => ({ text: `Results complete: promote ${classLabel(c)}`, to: '/classes', tone: 'info' as const })),
+          ...db.resultSheets.filter((sh) => sh.status === 'SUBMITTED').map((sh) => ({ text: `Review & publish: ${db.courses.find((c) => c.id === sh.courseId)?.code} result sheet`, sub: `Submitted by ${userName(db, sh.evaluatorId)}`, to: '/results', tone: 'warning' as const })),
+          ...(db.users.some((u) => u.backlogCourses?.length) ? [{ text: `${db.users.filter((u) => u.backlogCourses?.length).length} student(s) with backlogs: register for re-exams`, to: '/results', tone: 'info' as const }] : []),
+          ...db.classes.filter((c) => classResults(db, c).ready && !c.promotedAt).map((c) => ({ text: `Results published: promote ${classLabel(c)}`, to: '/classes', tone: 'info' as const })),
           ...db.classes.filter((c) => classCourses(db, c).length === 0).map((c) => ({ text: `Create courses & assign teachers: ${classLabel(c)}`, to: '/classes', tone: 'warning' as const })),
           ...apptTasks,
         ],
-        shortcuts: [{ to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
+        shortcuts: [{ to: '/results', label: 'Result sheets' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
       }
     }
     case 'library': {
@@ -220,7 +228,7 @@ export default function OfficeHome() {
   const db = useDB()
   const user = useCurrentUser()!
   const office = persona(user) as Office
-  const v = view(db, office)
+  const v = view(db, office, user)
   const notices = db.notices.filter((n) => n.audience === 'all' || n.audience === 'faculty').sort((a, b) => b.createdAt - a.createdAt).slice(0, 3)
   return (
     <>

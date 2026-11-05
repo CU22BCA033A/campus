@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, FileCheck2, GraduationCap, Plus, Upload, XCircle } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
+import { wardensFor } from '../hostels'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { resyncRosters } from '../classes'
 import { fmtDate, inr, timeAgo, matches } from '../lib'
@@ -94,7 +95,7 @@ export default function Admissions() {
       d.users.push({
         id: studentId, name: a.name, email: `${local}@campus.edu`, password: 'welcome123', role: 'student', status: 'ACTIVE',
         department: a.program === 'BCA' ? 'Computer Applications' : a.program, rollNo, program: a.program, semester: 1, section: 'A', classId, batch: year,
-        phone: a.phone, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#6b3fa0', cgpa: 0, backlogs: 0,
+        phone: a.phone, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#6b3fa0', cgpa: 0, backlogs: 0, gender: a.gender, residence: a.residence ?? 'DAY_SCHOLAR', backlogCourses: [],
       })
       d.fees.push({ id: uid('fee'), studentId, title: 'Tuition fee – Semester 1', amount: base, scholarship: waiver, paidAmount: base - waiver, paidAt: Date.now(), txnId: `ADM${Date.now().toString().slice(-6)}`, dueAt: Date.now(), head: 'Tuition' })
       // Place the new student in this year's first-semester class for the programme (created if needed).
@@ -104,7 +105,8 @@ export default function Admissions() {
       x.stage = 'ADMITTED'; x.studentId = studentId; x.rollNo = rollNo
       x.history.push({ stage: 'ADMITTED', at: Date.now(), by: user.id })
     })
-    audit(user.id, 'ADMISSION_ADMITTED', `${a.name} admitted as ${rollNo}`)
+    audit(user.id, 'ADMISSION_ADMITTED', `${a.name} admitted as ${rollNo} (${a.residence === 'HOSTEL' ? 'hostel' : 'day scholar'})`)
+    if (a.residence === 'HOSTEL') notify(wardensFor(getDB(), getDB().users.find((u) => u.id === studentId)!), `New hostel student ${a.name} (${rollNo}) is on your waiting list`, '/hostel')
     notify([user.id], `${a.name} admitted. Student ID ${rollNo} created`, '/admin/users')
     setOpen(null)
   }
@@ -170,6 +172,14 @@ export default function Admissions() {
             <tr><td className="muted">Qualifying exam</td><td>{current.qualifyingPct}%</td></tr>
             <tr><td className="muted">Entrance score</td><td>{current.entranceScore}/100</td></tr>
             <tr><td className="muted">Merit score</td><td>{current.meritScore ?? merit(current)}</td></tr>
+            <tr><td className="muted">Gender / accommodation</td><td>
+              {current.stage === 'ADMITTED' ? `${current.gender ?? '—'} · ${current.residence === 'HOSTEL' ? 'Hostel' : 'Day scholar'}` : (
+                <div className="row gap">
+                  <select className="select" style={{ width: 'auto' }} aria-label="Gender" value={current.gender ?? ''} onChange={(e) => update((d) => { d.applications.find((x) => x.id === current.id)!.gender = (e.target.value || undefined) as Application['gender'] })}><option value="">Gender</option><option>Male</option><option>Female</option></select>
+                  <select className="select" style={{ width: 'auto' }} aria-label="Accommodation" value={current.residence ?? ''} onChange={(e) => update((d) => { d.applications.find((x) => x.id === current.id)!.residence = (e.target.value || undefined) as Application['residence'] })}><option value="">Accommodation</option><option value="HOSTEL">Hostel</option><option value="DAY_SCHOLAR">Day scholar</option></select>
+                </div>
+              )}
+            </td></tr>
             {current.studentId && <tr><td className="muted">Student ID</td><td><strong>{current.rollNo}</strong></td></tr>}
           </tbody></table>
           {current.documents.length > 0 && (
@@ -225,7 +235,7 @@ function StageActions({ a, onMove, onOffer, onAdmit }: { a: Application; onMove:
     case 'VERIFIED': return <>{reject}<span className="small muted">Generate the merit list to shortlist</span></>
     case 'SHORTLISTED': return <>{reject}<button className="btn" onClick={() => onOffer(a)}>Send offer letter</button></>
     case 'OFFERED': return <>{reject}<button className="btn btn-success" onClick={() => onMove(a, 'FEE_PAID')}>Record fee payment</button></>
-    case 'FEE_PAID': return <button className="btn btn-success" onClick={() => onAdmit(a)}><GraduationCap size={14} /> Admit &amp; generate student ID</button>
+    case 'FEE_PAID': return <button className="btn btn-success" disabled={!a.gender || !a.residence} title={!a.gender || !a.residence ? 'Set gender and hostel / day scholar first' : ''} onClick={() => onAdmit(a)}><GraduationCap size={14} /> Admit &amp; generate student ID</button>
     default: return null
   }
 }
@@ -233,13 +243,13 @@ function StageActions({ a, onMove, onOffer, onAdmit }: { a: Application; onMove:
 /** Public application form (no login), the top of the admissions funnel. */
 export function ApplyForm() {
   const [done, setDone] = useState<string | null>(null)
-  const [f, setF] = useState({ name: '', email: '', phone: '', program: 'BCA', qualifyingPct: '', entranceScore: '', category: 'General' as Application['category'] })
+  const [f, setF] = useState({ name: '', email: '', phone: '', program: 'BCA', qualifyingPct: '', entranceScore: '', category: 'General' as Application['category'], gender: '' as '' | 'Male' | 'Female', residence: '' as '' | 'HOSTEL' | 'DAY_SCHOLAR' })
   const [files, setFiles] = useState<Record<string, string>>({})
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     const id = uid('ap')
     update((d) => {
-      d.applications.push({ id, name: f.name, email: f.email, phone: f.phone, program: f.program, qualifyingPct: Number(f.qualifyingPct), entranceScore: Number(f.entranceScore), category: f.category, stage: 'APPLIED', createdAt: Date.now(), history: [{ stage: 'APPLIED', at: Date.now(), by: 'web' }], documents: DOCS.map((n) => ({ name: files[n] ? `${n} (${files[n]})` : n, status: 'PENDING' as const })) })
+      d.applications.push({ id, name: f.name, email: f.email, phone: f.phone, program: f.program, gender: f.gender || undefined, residence: f.residence || undefined, qualifyingPct: Number(f.qualifyingPct), entranceScore: Number(f.entranceScore), category: f.category, stage: 'APPLIED', createdAt: Date.now(), history: [{ stage: 'APPLIED', at: Date.now(), by: 'web' }], documents: DOCS.map((n) => ({ name: files[n] ? `${n} (${files[n]})` : n, status: 'PENDING' as const })) })
     })
     notify(officeUsers(getDB(), 'registrar'), `New admission application from ${f.name}`, '/admissions')
     setDone(id.toUpperCase())
@@ -263,6 +273,8 @@ export function ApplyForm() {
               <Field label="Programme"><select className="select" value={f.program} onChange={(e) => setF({ ...f, program: e.target.value })}>{Object.keys(PROGRAMS).map((p) => <option key={p}>{p}</option>)}</select></Field>
               <Field label="12th / qualifying exam %"><input className="input" type="number" min={0} max={100} step="0.1" required value={f.qualifyingPct} onChange={(e) => setF({ ...f, qualifyingPct: e.target.value })} /></Field>
               <Field label="Entrance test score (out of 100)"><input className="input" type="number" min={0} max={100} required value={f.entranceScore} onChange={(e) => setF({ ...f, entranceScore: e.target.value })} /></Field>
+              <Field label="Gender"><select className="select" required value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value as typeof f.gender })}><option value="">Select…</option><option>Male</option><option>Female</option></select></Field>
+              <Field label="Hostel accommodation"><select className="select" required value={f.residence} onChange={(e) => setF({ ...f, residence: e.target.value as typeof f.residence })}><option value="">Select…</option><option value="HOSTEL">Yes, I need the hostel</option><option value="DAY_SCHOLAR">No, day scholar</option></select></Field>
               <Field label="Category"><select className="select" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Application['category'] })}>{['General', 'OBC', 'SC', 'ST', 'EWS'].map((c) => <option key={c}>{c}</option>)}</select></Field>
             </div>
             <h3>Documents</h3>

@@ -140,7 +140,7 @@ export default function Classes() {
         const final = cls.semester >= cls.maxSemesters
         return (
           <Modal title={final ? `Graduate ${classLabel(cls)}` : `Promote ${classLabel(cls)} to Semester ${cls.semester + 1}`} onClose={() => setPromoting(false)} footer={<><button className="btn btn-ghost" onClick={() => setPromoting(false)}>Cancel</button><button className="btn" onClick={() => { promoteAndClose(cls.id, detained) }}>{final ? 'Graduate class' : `Promote ${r.rows.length - detained.length} student(s)`}</button></>}>
-            <p className="small">Failed courses are carried forward as backlogs and CGPA is updated with this semester's SGPA. Ticked students are <strong>detained</strong>: they stay in Semester {cls.semester} in a repeat section ({cls.section}-R).</p>
+            <p className="small">Failed courses were recorded as backlogs when results were published (re-register them under Results → Backlog registration). CGPA is updated with this semester's SGPA. Ticked students are <strong>detained</strong>: they stay in Semester {cls.semester} in a repeat section ({cls.section}-R).</p>
             <div className="stack" style={{ gap: 6 }}>{r.rows.map((row) => (
               <label key={row.student.id} className="row gap">
                 <input type="checkbox" checked={detained.includes(row.student.id)} onChange={(e) => setDetained(e.target.checked ? [...detained, row.student.id] : detained.filter((x) => x !== row.student.id))} />
@@ -198,15 +198,8 @@ function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; o
   const rows = r.rows.filter((x) => matches(q, x.student.name, x.student.rollNo) || matches(q, classLabel(cls)))
   const passed = r.rows.filter((x) => x.failed === 0).length
 
-  const publishAll = () => {
-    const ids = r.exams.filter((e) => e.exam && !e.exam.resultsPublished && db.results.some((x) => x.examId === e.exam!.id)).map((e) => e.exam!.id)
-    if (!ids.length) return alert('No end-semester exam has marks entered yet.')
-    update((d) => { d.exams.forEach((e) => { if (ids.includes(e.id)) e.resultsPublished = true }) })
-    notify(classStudents(db, cls.id).map((s) => s.id), `Semester ${cls.semester} results are published`, '/exams')
-    audit(me.id, 'RESULTS_PUBLISH', `${classLabel(cls)}: ${ids.length} exam(s)`)
-  }
   const exportCsv = () => {
-    const lines = [['Roll no', 'Name', ...r.courses.map((c) => c.code), 'SGPA', 'Failed'], ...r.rows.map((x) => [x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.marks !== undefined ? `${c.marks} (${c.grade ?? '-'})` : '')), x.sgpa?.toFixed(2) ?? '', String(x.failed)])]
+    const lines = [['Roll no', 'Name', ...r.courses.map((c) => c.code), 'SGPA', 'Failed'], ...r.rows.map((x) => [x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.final !== undefined ? `${c.final} (${c.grade ?? '-'})` : '')), x.sgpa?.toFixed(2) ?? '', String(x.failed)])]
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); a.download = `${cls.id}-sem${cls.semester}-results.csv`; a.click()
   }
 
@@ -214,21 +207,21 @@ function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; o
     <>
       <div className="grid grid-4">
         <Stat label="Courses this semester" value={r.courses.length} />
-        <Stat label="Results published" value={`${r.exams.filter((e) => e.exam?.resultsPublished).length}/${r.courses.length}`} tone={r.ready ? 'success' : 'warning'} />
+        <Stat label="Results published" value={`${r.sheets.filter((e) => e.sheet?.status === 'PUBLISHED').length}/${r.courses.length}`} tone={r.ready ? 'success' : 'warning'} />
         <Stat label="Passed all courses" value={`${passed}/${r.rows.length}`} tone="success" />
         <Stat label="With failures" value={r.rows.length - passed} tone="danger" />
       </div>
       {!r.ready && (
         <div className="alert alert-warning">
-          Promotion unlocks once every course has a published end-semester result.
-          {r.missingExam.length > 0 && <> No end-semester exam scheduled for: <strong>&nbsp;{r.missingExam.join(', ')}</strong>.</>}
+          Promotion unlocks once every course's result sheet is published.
+          {r.missingExam.length > 0 && <> No result sheet yet for: <strong>&nbsp;{r.missingExam.join(', ')}</strong>.</>}
           {r.unpublished.length > 0 && <> Not yet published: <strong>&nbsp;{r.unpublished.join(', ')}</strong>.</>}
         </div>
       )}
       <Card title={`Semester ${cls.semester} result sheet`} action={<div className="row gap">
         <button className="btn btn-outline btn-sm" onClick={exportCsv}><Download size={14} /> CSV</button>
-        {can(me, 'manageResults') && r.unpublished.length > 0 && <button className="btn btn-outline btn-sm" onClick={publishAll}>Publish all results</button>}
-        <Link to="/exams" className="btn btn-outline btn-sm">Manage exams &amp; marks</Link>
+        <Link to="/results" className="btn btn-outline btn-sm">Result sheets</Link>
+        <Link to="/exams" className="btn btn-outline btn-sm">Exams</Link>
         {canPromote && <button className="btn btn-sm" disabled={!r.ready} onClick={onPromote}>{cls.semester >= cls.maxSemesters ? <><GraduationCap size={14} /> Graduate</> : <><ArrowUpCircle size={14} /> Promote to Sem {cls.semester + 1}</>}</button>}
       </div>}>
         {r.courses.length === 0 ? <Empty text="No courses this semester." /> : (
@@ -237,7 +230,7 @@ function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; o
             <tbody>{rows.map((x) => (
               <tr key={x.student.id}>
                 <td>{x.student.name}<div className="small muted">{x.student.rollNo}</div></td>
-                {x.cells.map((c) => <td key={c.course.id}>{c.marks !== undefined ? <span>{c.marks}/{c.max} {c.published && c.grade && <Badge tone={c.grade === 'F' ? 'danger' : 'success'}>{c.grade}</Badge>}</span> : <span className="muted">—</span>}</td>)}
+                {x.cells.map((c) => <td key={c.course.id}>{c.final !== undefined ? <span title={`Internal ${c.internal} + External ${c.external}`}>{c.final}/{c.max} {c.published && c.grade && <Badge tone={c.grade === 'F' || c.grade === 'AB' ? 'danger' : 'success'}>{c.grade}</Badge>}</span> : <span className="muted">—</span>}</td>)}
                 <td><strong>{x.sgpa?.toFixed(2) ?? '—'}</strong></td>
                 <td>{r.ready ? <Badge tone={x.failed ? 'danger' : 'success'}>{x.failed ? `${x.failed} backlog(s)` : 'Pass'}</Badge> : <Badge>Pending</Badge>}</td>
               </tr>

@@ -95,10 +95,18 @@ const bca2025Ids = bca2025.map((s) => s.id)
 const bba2024Ids = bba2024.map((s) => s.id)
 const allStudentIds = [...bca2024Ids, ...bca2025Ids, ...bba2024Ids]
 
+/** Gender and hostel/day-scholar status for demo students (four hostel students await rooms). */
+const FEMALE = new Set(['s2', 's4', 's6', 's8', 's10', 's12', 's14', 's17', 's19', 's21'])
+const HOSTELLERS = new Set(['s1', 's2', 's3', 's4', 's5', 's7', 's8', 's15', 's17'])
+const withResidence = (u: User): User => u.role !== 'student' ? u : {
+  ...u, gender: FEMALE.has(u.id) ? 'Female' : 'Male', residence: HOSTELLERS.has(u.id) ? 'HOSTEL' : 'DAY_SCHOLAR',
+  backlogCourses: u.id === 's21' ? ['c8'] : [],
+}
+
 export function createSeed(): DB {
   return {
-    version: 4,
-    users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser],
+    version: 5,
+    users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [
       { id: 'cls-bca-2024-a', program: 'BCA', batch: 2024, section: 'A', semester: 5, maxSemesters: 6, mentorId: 'f1' },
       { id: 'cls-bca-2025-a', program: 'BCA', batch: 2025, section: 'A', semester: 3, maxSemesters: 6, mentorId: 'f2' },

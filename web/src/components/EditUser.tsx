@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { audit, update, useCurrentUser, useDB } from '../data/store'
+import { audit, getDB, notify, update, useCurrentUser, useDB } from '../data/store'
+import { wardensFor } from '../hostels'
 import type { Office, User } from '../data/types'
 import { can, OFFICES, persona } from '../access'
 import { classLabel, resyncRosters } from '../classes'
@@ -27,11 +28,16 @@ export default function EditUser({ user, onClose }: { user: User; onClose: () =>
     if (db.users.some((u) => u.id !== user.id && u.email.toLowerCase() === f.email.toLowerCase())) return setErr('Another account already uses this email.')
     if (f.rollNo && db.users.some((u) => u.id !== user.id && u.rollNo === f.rollNo)) return setErr('This roll number is already assigned.')
     const changed = (Object.keys(f) as (keyof User)[]).filter((k) => JSON.stringify(f[k]) !== JSON.stringify(user[k]))
+    if (f.residence === 'HOSTEL' && !f.gender) return setErr('Set the gender so the student goes to the right hostel.')
+    const leavingHostel = user.residence === 'HOSTEL' && f.residence === 'DAY_SCHOLAR' && db.rooms.some((r) => r.occupants.includes(user.id))
+    if (leavingHostel && !confirm(`${user.name} has a hostel room. Switching to day scholar vacates it. Continue?`)) return
     update((d) => {
       const x = d.users.find((u) => u.id === user.id)!
       Object.assign(x, f)
+      if (leavingHostel) d.rooms.forEach((r) => { r.occupants = r.occupants.filter((o) => o !== user.id) })
       resyncRosters(d)
     })
+    if (f.residence === 'HOSTEL' && user.residence !== 'HOSTEL') notify(wardensFor(getDB(), { ...user, ...f }), `${f.name} opted for the hostel and is on your waiting list`, '/hostel')
     audit(me.id, 'PROFILE_EDIT', `${user.name}: ${changed.join(', ') || 'no changes'}`)
     onClose()
   }
@@ -55,6 +61,12 @@ export default function EditUser({ user, onClose }: { user: User; onClose: () =>
               {db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
             </select>
           </Field>
+          <div className="grid grid-2">
+            <Field label="Gender"><select className="select" value={f.gender ?? ''} onChange={(e) => set('gender', (e.target.value || undefined) as User['gender'])}><option value="">Not set</option><option>Male</option><option>Female</option></select></Field>
+            <Field label="Accommodation" hint={can(me, 'setResidence') ? 'Hostel students join the matching hostel\'s waiting list' : 'Set by the Admission department or Registrar'}>
+              <select className="select" disabled={!can(me, 'setResidence')} value={f.residence ?? ''} onChange={(e) => set('residence', (e.target.value || undefined) as User['residence'])}><option value="">Not set</option><option value="HOSTEL">Hostel</option><option value="DAY_SCHOLAR">Day scholar</option></select>
+            </Field>
+          </div>
           <div className="grid grid-2">
             <Field label="CGPA" hint={academicEditor ? undefined : 'Editable by the Registrar of Evaluation'}><input className="input" type="number" step="0.01" min={0} max={10} disabled={!academicEditor} value={f.cgpa ?? 0} onChange={(e) => set('cgpa', Number(e.target.value))} /></Field>
             <Field label="Backlogs"><input className="input" type="number" min={0} disabled={!academicEditor} value={f.backlogs ?? 0} onChange={(e) => set('backlogs', Number(e.target.value))} /></Field>

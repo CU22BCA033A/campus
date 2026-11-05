@@ -1,6 +1,6 @@
 /** Classes (programme + batch + section), course rosters, class results and semester promotion. */
 import type { ClassGroup, DB } from './data/types'
-import { gradeResults } from './lib'
+import { sheetFor, sheetRows } from './results'
 
 export const classLabel = (c?: ClassGroup) => (c ? `${c.program} ${c.batch} · Sem ${c.semester} · Sec ${c.section}` : 'Unassigned')
 export const classOf = (db: DB, studentId: string) => db.classes.find((c) => c.id === db.users.find((u) => u.id === studentId)?.classId)
@@ -26,38 +26,31 @@ export function resyncRosters(d: DB) {
   }
 }
 
-/** End-semester result sheet for a class's current semester. */
+/** A class's current-semester results, from the result sheets (internal + external = final). */
 export function classResults(db: DB, cls: ClassGroup) {
   const courses = classCourses(db, cls)
-  const exams = courses.map((c) => ({ course: c, exam: db.exams.filter((e) => e.courseId === c.id && /end sem/i.test(e.title)).sort((a, b) => b.date.localeCompare(a.date))[0] }))
+  const sheets = courses.map((course) => ({ course, sheet: sheetFor(db, course.id, cls.semester) }))
   const students = classStudents(db, cls.id).filter((s) => s.status === 'ACTIVE')
-  const graded = exams.map(({ course, exam }) => {
-    if (!exam) return { course, exam, grades: new Map<string, { grade: string; point: number }>() }
-    const rs = db.results.filter((r) => r.examId === exam.id)
-    return { course, exam, grades: gradeResults(rs.map((r) => ({ studentId: r.studentId, pct: (r.marks / exam.maxMarks) * 100 })), exam.grading).grades }
-  })
+  const rowsBySheet = new Map(sheets.filter((x) => x.sheet).map((x) => [x.sheet!.id, sheetRows(db, x.sheet!)]))
   const rows = students.map((s) => {
     let pts = 0, cr = 0, failed = 0
-    const cells = graded.map(({ course, exam, grades }) => {
-      const r = exam && db.results.find((x) => x.examId === exam.id && x.studentId === s.id)
-      const g = grades.get(s.id)
-      if (exam && exam.resultsPublished) {
-        if (!g || g.point === 0) failed++
-        if (g) { pts += g.point * course.credits; cr += course.credits }
-      }
-      return { course, marks: r?.marks, max: exam?.maxMarks, grade: g?.grade, published: !!exam?.resultsPublished }
+    const cells = sheets.map(({ course, sheet }) => {
+      const r = sheet ? rowsBySheet.get(sheet.id)!.find((x) => x.student.id === s.id) : undefined
+      const published = sheet?.status === 'PUBLISHED'
+      if (published && r) { if (!r.pass) failed++; pts += r.point * course.credits; cr += course.credits }
+      return { course, internal: r?.internal, external: r?.external, final: r?.final, max: sheet ? sheet.internalMax + sheet.externalMax : 100, grade: r?.grade, published }
     })
     return { student: s, cells, sgpa: cr ? pts / cr : null, failed }
   })
-  const missingExam = graded.filter((g) => !g.exam).map((g) => g.course.code)
-  const unpublished = graded.filter((g) => g.exam && !g.exam.resultsPublished).map((g) => g.course.code)
+  const missingExam = sheets.filter((x) => !x.sheet).map((x) => x.course.code) // no result sheet yet
+  const unpublished = sheets.filter((x) => x.sheet && x.sheet.status !== 'PUBLISHED').map((x) => x.course.code)
   const ready = courses.length > 0 && missingExam.length === 0 && unpublished.length === 0
-  return { courses, exams: graded, rows, ready, missingExam, unpublished }
+  return { courses, sheets, rows, ready, missingExam, unpublished }
 }
 
 /**
  * Promote a class to the next semester after its results are published.
- * Failed courses become backlogs; CGPA is updated with this semester's SGPA; detained students
+ * Backlogs come from published result sheets; CGPA is updated with this semester's SGPA; detained students
  * are moved to a repeat section of the same semester. A class finishing its final semester graduates.
  */
 export function promoteClass(d: DB, classId: string, detainedIds: string[], actorId: string) {
@@ -75,7 +68,7 @@ export function promoteClass(d: DB, classId: string, detainedIds: string[], acto
     }
     const sem = cls.semester
     if (row.sgpa !== null) u.cgpa = Math.round((((u.cgpa ?? row.sgpa) * (sem - 1) + row.sgpa) / sem) * 100) / 100
-    u.backlogs = (u.backlogs ?? 0) + row.failed
+    // Backlogs were already recorded when each result sheet was published.
     if (graduating) {
       u.status = 'DEACTIVATED'
       d.alumni.push({ id: `al-${u.id}`, name: u.name, batch: new Date().getFullYear(), program: cls.program, company: '—', role: 'Graduate', city: '—', mentor: false, email: u.email, mentees: [], donations: 0 })

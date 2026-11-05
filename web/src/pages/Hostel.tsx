@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { BedDouble, Plus, ScanLine, Utensils, Wand2 } from 'lucide-react'
+import { BedDouble, Pencil, Plus, ScanLine, Utensils, Wand2 } from 'lucide-react'
+import { hostelsForGender, isChiefWarden, managedHostels, waitingList } from '../hostels'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
@@ -39,7 +40,10 @@ function StudentHostel() {
     for (const meal of MEALS) if (!d.mealCoupons.some((c) => c.studentId === user.id && c.date === today() && c.meal === meal)) d.mealCoupons.push({ id: uid('mc'), studentId: user.id, date: today(), meal, code: `${meal.slice(0, 2).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}` })
   })
 
-  if (!room) return (<><PageHeader title="Hostel" /><Card><Empty icon={<BedDouble />} text="You are not allotted a hostel room. Contact the hostel office to apply." /></Card></>)
+  if (!room) {
+    const h = hostelsForGender(db, user.gender)[0]
+    return (<><PageHeader title="Hostel" /><Card><Empty icon={<BedDouble />} text={user.residence === 'HOSTEL' ? `You are registered for hostel accommodation and are on the waiting list for ${h?.name ?? 'the hostel'}. The warden will allot a room.` : 'You are registered as a day scholar. Contact the Admission department or Registrar office to opt for the hostel.'} /></Card></>)
+  }
 
   return (
     <>
@@ -92,34 +96,75 @@ function StudentHostel() {
 function HostelAdmin() {
   const db = useDB()
   const user = useCurrentUser()!
-  const [tab, setTab] = useState<'rooms' | 'leaves' | 'mess'>('rooms')
+  const hostels = managedHostels(db, user)
+  const chief = isChiefWarden(user)
+  const [hostelId, setHostelId] = useState(hostels[0]?.id ?? '')
+  const [tab, setTab] = useState<'rooms' | 'waiting' | 'leaves' | 'mess' | 'hostels'>('rooms')
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ ok: boolean; text: string } | null>(null)
-  const [allotFor, setAllotFor] = useState<string | null>(null)
+  const [allotFor, setAllotFor] = useState<string | null>(null) // room id
+  const [allotStudent, setAllotStudent] = useState<string | null>(null) // student id (from waiting list)
   const [term, setTerm] = useState('')
-  const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
-  const unassigned = students.filter((s) => !db.rooms.some((r) => r.occupants.includes(s.id)))
-  const beds = db.rooms.reduce((s, r) => s + r.capacity, 0)
-  const occupied = db.rooms.reduce((s, r) => s + r.occupants.length, 0)
+  const [roomDraft, setRoomDraft] = useState<{ id?: string; number: string; capacity: number; type: 'AC' | 'Non-AC'; feePerSem: number } | null>(null)
+  const [hostelDraft, setHostelDraft] = useState<{ id?: string; name: string; gender: 'Boys' | 'Girls'; wardenId: string } | null>(null)
+  const hostel = hostels.find((h) => h.id === hostelId) ?? hostels[0]
+  if (!hostel) return <><PageHeader title="Hostel & mess" /><Card><Empty text="No hostel is assigned to you. Contact the Chief Warden." /></Card></>
+  const rooms = db.rooms.filter((r) => r.hostelId === hostel.id)
+  const waiting = waitingList(db, hostel.id)
+  const residents = new Set(rooms.flatMap((r) => r.occupants))
+  const beds = rooms.reduce((s, r) => s + r.capacity, 0)
+  const occupied = rooms.reduce((s, r) => s + r.occupants.length, 0)
+  const leaves = db.hostelLeaves.filter((l) => residents.has(l.studentId))
+  const wardens = db.users.filter((u) => u.role === 'admin' && u.office === 'hostel')
 
   const allot = (studentId: string, roomId: string) => {
-    update((d) => { d.rooms.forEach((r) => { r.occupants = r.occupants.filter((o) => o !== studentId) }); d.rooms.find((r) => r.id === roomId)!.occupants.push(studentId) })
     const r = db.rooms.find((x) => x.id === roomId)!
-    notify([studentId], `Hostel room ${r.number} allotted`, '/hostel')
-    audit(user.id, 'HOSTEL_ALLOT', `${userName(db, studentId)} → ${r.number}`)
+    if (r.occupants.length >= r.capacity) return alert('That room is full.')
+    update((d) => { d.rooms.forEach((x) => { x.occupants = x.occupants.filter((o) => o !== studentId) }); d.rooms.find((x) => x.id === roomId)!.occupants.push(studentId) })
+    notify([studentId], `Hostel room ${r.number}, ${hostel.name} allotted`, '/hostel')
+    audit(user.id, 'HOSTEL_ALLOT', `${userName(db, studentId)} → ${hostel.name} ${r.number}`)
   }
-  /** Conflict-free bulk allocation: fills free beds in order, never over capacity. */
+  /** Conflict-free bulk allocation within this hostel: waiting-list students into free beds. */
   const autoAllocate = () => {
     let n = 0
     update((d) => {
-      for (const s of unassigned) {
-        const r = d.rooms.find((x) => x.occupants.length < x.capacity)
+      for (const s of waiting) {
+        const r = d.rooms.find((x) => x.hostelId === hostel.id && x.occupants.length < x.capacity)
         if (!r) break
         r.occupants.push(s.id); n++
       }
     })
-    audit(user.id, 'HOSTEL_BULK_ALLOT', `Auto-allocated ${n} students`)
-    alert(`${n} students allotted. ${Math.max(0, unassigned.length - n)} could not be placed (no free beds).`)
+    audit(user.id, 'HOSTEL_BULK_ALLOT', `${hostel.name}: auto-allocated ${n} students`)
+    alert(`${n} student(s) allotted. ${Math.max(0, waiting.length - n)} could not be placed (no free beds).`)
+  }
+  const saveRoom = () => {
+    const r = roomDraft!
+    if (!r.number.trim() || r.capacity < 1) return alert('Enter a room number and capacity.')
+    if (db.rooms.some((x) => x.hostelId === hostel.id && x.number.toLowerCase() === r.number.trim().toLowerCase() && x.id !== r.id)) return alert('That room number already exists in this hostel.')
+    const existing = r.id ? db.rooms.find((x) => x.id === r.id) : undefined
+    if (existing && existing.occupants.length > r.capacity) return alert(`${existing.occupants.length} students live in this room; capacity cannot be lower.`)
+    update((d) => {
+      if (r.id) Object.assign(d.rooms.find((x) => x.id === r.id)!, { number: r.number.trim(), capacity: r.capacity, type: r.type, feePerSem: r.feePerSem })
+      else d.rooms.push({ id: uid('rm'), hostelId: hostel.id, block: hostel.name, number: r.number.trim(), capacity: r.capacity, occupants: [], type: r.type, feePerSem: r.feePerSem })
+    })
+    audit(user.id, r.id ? 'HOSTEL_ROOM_EDIT' : 'HOSTEL_ROOM_ADD', `${hostel.name} ${r.number} (${r.capacity} beds)`)
+    setRoomDraft(null)
+  }
+  const saveHostel = () => {
+    const h = hostelDraft!
+    if (!h.name.trim()) return alert('Enter a hostel name.')
+    update((d) => {
+      const id = h.id ?? uid('h')
+      if (h.id) Object.assign(d.hostels.find((x) => x.id === h.id)!, { name: h.name, gender: h.gender, wardenId: h.wardenId || undefined })
+      else d.hostels.push({ id, name: h.name, gender: h.gender, wardenId: h.wardenId || undefined })
+      // The assigned warden manages only this hostel.
+      d.users.forEach((u) => { if (u.role === 'admin' && u.office === 'hostel' && u.hostelId === id && u.id !== h.wardenId) u.hostelId = undefined })
+      if (h.wardenId) { const w = d.users.find((u) => u.id === h.wardenId)!; w.hostelId = id }
+      d.rooms.forEach((r) => { if (r.hostelId === id) r.block = h.name })
+    })
+    if (h.wardenId) notify([h.wardenId], `You are the warden of ${h.name}`, '/hostel')
+    audit(user.id, h.id ? 'HOSTEL_EDIT' : 'HOSTEL_ADD', `${h.name} (${h.gender})`)
+    setHostelDraft(null)
   }
   const warden = (id: string, ok: boolean) => {
     const l = db.hostelLeaves.find((x) => x.id === id)!
@@ -139,35 +184,62 @@ function HostelAdmin() {
 
   return (
     <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search room or student…' }} title="Hostel & mess" subtitle="Rooms, allocation, leave approvals and meal coupons" />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search room or student…' }} title="Hostel & mess" subtitle={chief ? 'Chief Warden: all hostels, rooms, wardens and waiting lists' : `Warden · ${hostel.name}`} />
+      {hostels.length > 1 && <div className="row gap wrap">{hostels.map((h) => <button key={h.id} className={`chip ${h.id === hostel.id ? 'active' : ''}`} onClick={() => setHostelId(h.id)}>{h.name}</button>)}</div>}
       <div className="grid grid-4">
-        <Stat label="Occupancy" value={`${occupied}/${beds}`} hint={`${Math.round((occupied / beds) * 100)}% beds filled`} icon={<BedDouble size={22} />} />
-        <Stat label="Awaiting warden" value={db.hostelLeaves.filter((l) => l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING').length} tone="warning" />
-        <Stat label="Meals served today" value={db.mealCoupons.filter((c) => c.date === today() && c.redeemedAt).length} tone="success" icon={<Utensils size={22} />} />
+        <Stat label="Occupancy" value={`${occupied}/${beds}`} hint={`${beds - occupied} beds free · ${rooms.length} rooms`} icon={<BedDouble size={22} />} />
+        <Stat label="Waiting for a room" value={waiting.length} tone={waiting.length ? 'warning' : 'success'} hint={`${hostel.gender === 'Boys' ? 'Boys' : 'Girls'} opted for hostel`} />
+        <Stat label="Awaiting warden" value={leaves.filter((l) => l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING').length} tone="accent" />
+        <Stat label="Warden" value={hostel.wardenId ? userName(db, hostel.wardenId).split(' (')[0] : 'Not assigned'} tone="info" />
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'rooms', label: 'Rooms' }, { id: 'leaves', label: 'Leave approvals' }, { id: 'mess', label: 'Mess counter' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'rooms', label: 'Rooms' }, { id: 'waiting', label: 'Waiting list', count: waiting.length }, { id: 'leaves', label: 'Leave approvals' }, { id: 'mess', label: 'Mess counter' }, ...(chief ? [{ id: 'hostels' as const, label: 'Hostels & wardens', count: db.hostels.length }] : [])]} />
       {tab === 'rooms' && (
         <>
-          <div className="row between wrap gap"><span className="muted">{unassigned.length} active students without a room</span><button className="btn btn-outline" disabled={!unassigned.length} onClick={autoAllocate}><Wand2 size={14} /> Auto-allocate free beds</button></div>
+          <div className="row between wrap gap">
+            <span className="muted">{hostel.name}: {rooms.length} rooms</span>
+            <div className="row gap">
+              <button className="btn btn-outline" disabled={!waiting.length} onClick={autoAllocate}><Wand2 size={14} /> Auto-allocate waiting list</button>
+              <button className="btn" onClick={() => setRoomDraft({ number: '', capacity: 2, type: 'Non-AC', feePerSem: 38000 })}><Plus size={14} /> Add room</button>
+            </div>
+          </div>
+          {rooms.length === 0 && <Card><Empty text="No rooms yet. Add the first room." /></Card>}
           <div className="grid grid-3">
-            {db.rooms.filter((r) => matches(term, r.number, r.block, r.type, ...r.occupants.map((o) => userName(db, o)))).map((r) => (
-              <Card key={r.id} title={`${r.number}`} action={<Badge tone={r.occupants.length >= r.capacity ? 'danger' : 'success'}>{r.occupants.length}/{r.capacity}</Badge>}>
-                <div className="small muted">{r.block} · {r.type} · {inr(r.feePerSem)}/sem</div>
+            {rooms.filter((r) => matches(term, r.number, r.type, ...r.occupants.map((o) => userName(db, o)))).map((r) => (
+              <Card key={r.id} title={r.number} action={<div className="row gap"><Badge tone={r.occupants.length >= r.capacity ? 'danger' : 'success'}>{r.occupants.length}/{r.capacity}</Badge><button className="icon-btn" aria-label={`Edit room ${r.number}`} onClick={() => setRoomDraft({ id: r.id, number: r.number, capacity: r.capacity, type: r.type, feePerSem: r.feePerSem })}><Pencil size={14} /></button></div>}>
+                <div className="small muted">{r.type} · {inr(r.feePerSem)}/sem</div>
                 <div className="list" style={{ marginTop: 8 }}>
-                  {r.occupants.map((o) => <div key={o} className="list-item small"><span className="grow">{userName(db, o)}</span><button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.rooms.find((x) => x.id === r.id)!.occupants = r.occupants.filter((x) => x !== o) })}>Vacate</button></div>)}
-                  {r.occupants.length < r.capacity && <button className="btn btn-outline btn-sm" onClick={() => setAllotFor(r.id)}>Allot bed</button>}
+                  {r.occupants.map((o) => <div key={o} className="list-item small"><span className="grow">{userName(db, o)} <span className="muted">{db.users.find((u) => u.id === o)?.rollNo}</span></span><button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { d.rooms.find((x) => x.id === r.id)!.occupants = r.occupants.filter((x) => x !== o) }); audit(user.id, 'HOSTEL_VACATE', `${userName(db, o)} from ${r.number}`) }}>Vacate</button></div>)}
+                  {r.occupants.length < r.capacity && <button className="btn btn-outline btn-sm" disabled={!waiting.length} onClick={() => setAllotFor(r.id)}>{waiting.length ? 'Allot bed' : 'No one waiting'}</button>}
+                  {r.occupants.length === 0 && <button className="btn btn-ghost btn-sm" onClick={() => confirm(`Remove room ${r.number}?`) && update((d) => { d.rooms = d.rooms.filter((x) => x.id !== r.id) })}>Remove room</button>}
                 </div>
               </Card>
             ))}
           </div>
         </>
       )}
+      {tab === 'waiting' && (
+        <Card title={`${hostel.name}: students who opted for the hostel`} action={<span className="small muted">Set by the Admission department / Registrar</span>}>
+          {waiting.length === 0 ? <Empty text="Everyone who opted for this hostel has a room." /> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Student</th><th>Class</th><th>Phone</th><th /></tr></thead>
+              <tbody>{waiting.filter((s) => matches(term, s.name, s.rollNo)).map((s) => (
+                <tr key={s.id}>
+                  <td>{s.name}<div className="small muted">{s.rollNo} · {s.gender}</div></td>
+                  <td className="small">{s.program} {s.batch} · Sem {s.semester}</td>
+                  <td className="small">{s.phone ?? '—'}</td>
+                  <td><button className="btn btn-outline btn-sm" onClick={() => setAllotStudent(s.id)}>Allot room</button></td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </Card>
+      )}
       {tab === 'leaves' && (
         <Card>
-          {db.hostelLeaves.length === 0 ? <Empty text="No leave requests." /> : (
+          {leaves.length === 0 ? <Empty text="No leave requests from this hostel." /> : (
             <div className="table-wrap"><table>
               <thead><tr><th>Student</th><th>Reason</th><th>Dates</th><th>Parent</th><th>Warden</th><th /></tr></thead>
-              <tbody>{db.hostelLeaves.filter((l) => matches(term, userName(db, l.studentId), l.reason)).sort((a, b) => b.createdAt - a.createdAt).map((l) => (
+              <tbody>{leaves.filter((l) => matches(term, userName(db, l.studentId), l.reason)).sort((a, b) => b.createdAt - a.createdAt).map((l) => (
                 <tr key={l.id}>
                   <td>{userName(db, l.studentId)}</td><td>{l.reason}</td><td className="small">{fmtDateTime(l.from)} → {fmtDateTime(l.to)}</td>
                   <td><Badge tone={l.parentStatus === 'APPROVED' ? 'success' : l.parentStatus === 'REJECTED' ? 'danger' : 'warning'}>{l.parentStatus}</Badge></td>
@@ -190,11 +262,48 @@ function HostelAdmin() {
           <div className="row gap wrap" style={{ marginTop: 8 }}>{MEALS.map((m) => <Badge key={m} tone="info">{m}: {db.mealCoupons.filter((c) => c.date === today() && c.meal === m && c.redeemedAt).length} served / {db.mealCoupons.filter((c) => c.date === today() && c.meal === m).length} issued</Badge>)}</div>
         </Card>
       )}
-      {allotFor && (
-        <Modal title="Allot bed" onClose={() => setAllotFor(null)}>
-          {unassigned.length === 0 ? <Empty text="Every active student already has a room." /> : unassigned.map((s) => (
-            <div key={s.id} className="row between"><span>{s.name} <span className="muted small">{s.rollNo}</span></span><button className="btn btn-sm" onClick={() => { allot(s.id, allotFor); setAllotFor(null) }}>Allot</button></div>
-          ))}
+      {tab === 'hostels' && chief && (
+        <Card title="Hostels and their wardens" action={<button className="btn btn-sm" onClick={() => setHostelDraft({ name: '', gender: 'Boys', wardenId: '' })}><Plus size={14} /> Add hostel</button>}>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Hostel</th><th>For</th><th>Warden</th><th>Rooms</th><th>Occupancy</th><th>Waiting</th><th /></tr></thead>
+            <tbody>{db.hostels.map((h) => { const rs = db.rooms.filter((r) => r.hostelId === h.id); return (
+              <tr key={h.id}>
+                <td><strong>{h.name}</strong></td><td><Badge tone={h.gender === 'Girls' ? 'accent' : 'info'}>{h.gender}</Badge></td>
+                <td>{h.wardenId ? userName(db, h.wardenId) : <span className="muted">Not assigned</span>}</td>
+                <td>{rs.length}</td><td>{rs.reduce((s, r) => s + r.occupants.length, 0)}/{rs.reduce((s, r) => s + r.capacity, 0)}</td><td>{waitingList(db, h.id).length}</td>
+                <td><button className="btn btn-outline btn-sm" onClick={() => setHostelDraft({ id: h.id, name: h.name, gender: h.gender, wardenId: h.wardenId ?? '' })}>Edit</button></td>
+              </tr>
+            ) })}</tbody>
+          </table></div>
+        </Card>
+      )}
+
+      {(allotFor || allotStudent) && (
+        <Modal title={allotStudent ? `Allot a room to ${userName(db, allotStudent)}` : `Allot a bed in ${db.rooms.find((r) => r.id === allotFor)?.number}`} onClose={() => { setAllotFor(null); setAllotStudent(null) }}>
+          {allotStudent
+            ? rooms.filter((r) => r.occupants.length < r.capacity).map((r) => <div key={r.id} className="row between"><span>{r.number} <span className="muted small">{r.type} · {r.occupants.length}/{r.capacity}</span></span><button className="btn btn-sm" onClick={() => { allot(allotStudent, r.id); setAllotStudent(null) }}>Allot</button></div>)
+            : waiting.map((s) => <div key={s.id} className="row between"><span>{s.name} <span className="muted small">{s.rollNo}</span></span><button className="btn btn-sm" onClick={() => { allot(s.id, allotFor!); setAllotFor(null) }}>Allot</button></div>)}
+          {allotStudent && !rooms.some((r) => r.occupants.length < r.capacity) && <Empty text="No free beds. Add a room first." />}
+        </Modal>
+      )}
+      {roomDraft && (
+        <Modal title={roomDraft.id ? `Edit room ${roomDraft.number}` : `Add room to ${hostel.name}`} onClose={() => setRoomDraft(null)} footer={<><button className="btn btn-ghost" onClick={() => setRoomDraft(null)}>Cancel</button><button className="btn" onClick={saveRoom}>Save room</button></>}>
+          <div className="grid grid-2">
+            <Field label="Room number"><input className="input" value={roomDraft.number} placeholder={hostel.gender === 'Boys' ? 'A-104' : 'B-204'} onChange={(e) => setRoomDraft({ ...roomDraft, number: e.target.value })} /></Field>
+            <Field label="Beds (capacity)"><input className="input" type="number" min={1} max={8} value={roomDraft.capacity} onChange={(e) => setRoomDraft({ ...roomDraft, capacity: Number(e.target.value) })} /></Field>
+            <Field label="Type"><select className="select" value={roomDraft.type} onChange={(e) => setRoomDraft({ ...roomDraft, type: e.target.value as 'AC' | 'Non-AC' })}><option>AC</option><option>Non-AC</option></select></Field>
+            <Field label="Fee per semester (₹)"><input className="input" type="number" min={0} value={roomDraft.feePerSem} onChange={(e) => setRoomDraft({ ...roomDraft, feePerSem: Number(e.target.value) })} /></Field>
+          </div>
+        </Modal>
+      )}
+      {hostelDraft && (
+        <Modal title={hostelDraft.id ? 'Edit hostel' : 'Add hostel'} onClose={() => setHostelDraft(null)} footer={<><button className="btn btn-ghost" onClick={() => setHostelDraft(null)}>Cancel</button><button className="btn" onClick={saveHostel}>Save</button></>}>
+          <Field label="Hostel name"><input className="input" value={hostelDraft.name} onChange={(e) => setHostelDraft({ ...hostelDraft, name: e.target.value })} /></Field>
+          <div className="grid grid-2">
+            <Field label="For"><select className="select" value={hostelDraft.gender} onChange={(e) => setHostelDraft({ ...hostelDraft, gender: e.target.value as 'Boys' | 'Girls' })}><option>Boys</option><option>Girls</option></select></Field>
+            <Field label="Warden" hint="Gets management access to this hostel only"><select className="select" value={hostelDraft.wardenId} onChange={(e) => setHostelDraft({ ...hostelDraft, wardenId: e.target.value })}><option value="">Not assigned</option>{wardens.filter((w) => w.hostelId || w.id === hostelDraft.wardenId || true).map((w) => <option key={w.id} value={w.id}>{w.name}{!w.hostelId ? ' (Chief Warden)' : ''}</option>)}</select></Field>
+          </div>
+          <div className="small muted">Create warden accounts in User Management (office: Hostel Warden).</div>
         </Modal>
       )}
     </>

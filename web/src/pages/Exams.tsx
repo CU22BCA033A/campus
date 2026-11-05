@@ -2,8 +2,12 @@ import { useState } from 'react'
 import { AlertTriangle, Armchair, CheckCircle2, FileText, Printer, Ticket } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
+import { sgpaOf, studentResults } from '../results'
+import { classCourses, classLabel } from '../classes'
 import { courseName, coursesFor, examEligibility, fmtDate, gradeResults, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
+import { availableComponents, newSheet } from '../results'
+import { Link } from 'react-router-dom'
 import type { DB, Exam } from '../data/types'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
@@ -35,14 +39,17 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
   const db = useDB()
   const student = db.users.find((u) => u.id === studentId)!
   const courses = coursesFor(db, student)
-  const exams = db.exams.filter((e) => courses.some((c) => c.id === e.courseId))
+  // Own courses' exams, plus supplementary exams the student is registered for (backlogs).
+  const suppExamIds = new Set(db.resultSheets.filter((sh) => sh.term === 'Supplementary' && sh.extraStudentIds.includes(studentId) && sh.examId).map((sh) => sh.examId!))
+  const exams = db.exams.filter((e) => (courses.some((c) => c.id === e.courseId) && e.kind !== 'Supplementary') || suppExamIds.has(e.id))
   const upcoming = exams.filter((e) => !e.resultsPublished).sort((a, b) => a.date.localeCompare(b.date))
-  const published = exams.filter((e) => e.resultsPublished)
+  const results = studentResults(db, studentId)
   const [tab, setTab] = useState<'schedule' | 'results' | 'reval'>('schedule')
   const [ticket, setTicket] = useState(false)
   const [reval, setReval] = useState<Exam | null>(null)
   const [reason, setReason] = useState('')
-  const sgpa = sgpaFor(db, studentId)
+  const lastSem = Math.max(0, ...results.filter((x) => x.sheet.term === 'Regular' && !x.row.backlogAttempt).map((x) => x.sheet.semester))
+  const sgpa = lastSem ? sgpaOf(db, studentId, lastSem) : null
   const elig = upcoming.map((e) => ({ e, ...examEligibility(db, studentId, e) }))
   const allEligible = elig.length > 0 && elig.every((x) => x.eligible)
   const anyEligible = elig.some((x) => x.eligible)
@@ -61,10 +68,10 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
       <div className="grid grid-4">
         <Stat label="Upcoming exams" value={upcoming.length} tone="info" />
         <Stat label="Eligible" value={`${elig.filter((x) => x.eligible).length}/${elig.length}`} tone={allEligible ? 'success' : 'danger'} />
-        <Stat label="SGPA (published)" value={sgpa !== null ? sgpa.toFixed(2) : '—'} tone="brand" />
+        <Stat label={lastSem ? `SGPA (Sem ${lastSem})` : 'SGPA'} value={sgpa !== null ? sgpa.toFixed(2) : '—'} tone="brand" hint={(student.backlogCourses?.length ?? 0) ? `${student.backlogCourses!.length} backlog course(s)` : undefined} />
         <Stat label="CGPA" value={student.cgpa?.toFixed(2) ?? '—'} tone="accent" />
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'schedule', label: 'Schedule & eligibility' }, { id: 'results', label: 'Results', count: published.length }, ...(!readOnly ? [{ id: 'reval' as const, label: 'Re-evaluation' }] : [])]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'schedule', label: 'Schedule & eligibility' }, { id: 'results', label: 'Results', count: results.length }, ...(!readOnly ? [{ id: 'reval' as const, label: 'Re-evaluation' }] : [])]} />
       {tab === 'schedule' && (
         <Card>
           {elig.length === 0 ? <Empty text="No upcoming exams." /> : (
@@ -86,23 +93,28 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
       )}
       {tab === 'results' && (
         <Card action={<button className="btn btn-outline btn-sm" onClick={() => window.print()}><Printer size={14} /> Print grade sheet</button>} title="Grade sheet">
-          {published.length === 0 ? <Empty text="No results published yet." /> : (
+          {results.length === 0 ? <Empty text="No results published yet." /> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Course</th><th>Exam</th><th>Marks</th><th>Grade</th><th>Points</th>{!readOnly && <th />}</tr></thead>
-              <tbody>{published.map((e) => {
-                const r = db.results.find((x) => x.examId === e.id && x.studentId === studentId)
-                const g = examGrades(db, e).grades.get(studentId)
-                const rv = db.revaluations.find((x) => x.examId === e.id && x.studentId === studentId)
+              <thead><tr><th>Course</th><th>Semester</th><th>Attempt</th><th>Internal</th><th>External</th><th>Final</th><th>Grade</th><th>Result</th>{!readOnly && <th />}</tr></thead>
+              <tbody>{results.map(({ sheet, course, row }) => {
+                const ex = db.exams.find((e) => e.id === sheet.examId)
+                const rv = ex && db.revaluations.find((x) => x.examId === ex.id && x.studentId === studentId)
                 return (
-                  <tr key={e.id}>
-                    <td>{courseName(db, e.courseId)}</td><td>{e.title}</td><td>{r ? `${r.marks}/${e.maxMarks}` : 'Absent'}</td>
-                    <td>{g ? <Badge tone={g.point ? 'success' : 'danger'}>{g.grade}</Badge> : '—'}</td><td>{g?.point ?? '—'}</td>
-                    {!readOnly && <td>{r && !rv && <button className="btn btn-outline btn-sm" onClick={() => setReval(e)}>Apply for re-evaluation</button>}{rv && <Badge tone="info">Re-eval: {rv.status}</Badge>}</td>}
+                  <tr key={sheet.id}>
+                    <td><strong>{course.code}</strong> {course.name}</td><td>{sheet.semester}</td>
+                    <td>{row.backlogAttempt ? <Badge tone="warning">Backlog</Badge> : <Badge>Regular</Badge>}</td>
+                    <td>{row.internal}/{sheet.internalMax}</td>
+                    <td>{row.absent ? 'Absent' : `${row.external ?? '—'}/${sheet.externalMax}`}</td>
+                    <td><strong>{row.final ?? '—'}/{sheet.internalMax + sheet.externalMax}</strong></td>
+                    <td>{row.grade ? <Badge tone={row.pass ? 'success' : 'danger'}>{row.grade}</Badge> : '—'}</td>
+                    <td>{row.pass ? <Badge tone="success">Pass</Badge> : <Badge tone="danger">Fail</Badge>}</td>
+                    {!readOnly && <td>{ex && row.externalRaw !== undefined && !rv && <button className="btn btn-outline btn-sm" onClick={() => setReval(ex)}>Apply for re-evaluation</button>}{rv && <Badge tone="info">Re-eval: {rv.status}</Badge>}</td>}
                   </tr>
                 )
               })}</tbody>
             </table></div>
           )}
+          {(student.backlogCourses?.length ?? 0) > 0 && <div className="alert alert-warning small" style={{ marginTop: 10 }}>Backlogs: {student.backlogCourses!.map((c) => db.courses.find((x) => x.id === c)?.code).join(', ')}. The Registrar of Evaluation registers you for the supplementary exam.</div>}
         </Card>
       )}
       {tab === 'reval' && (
@@ -145,7 +157,34 @@ function ExamAdmin() {
   const user = useCurrentUser()!
   const isAdmin = can(user, 'manageExams')
   const [term, setTerm] = useState('')
-  const exams = db.exams.filter((e) => matches(term, e.title, courseName(db, e.courseId), db.courses.find((c) => c.id === e.courseId)?.code, e.date)).filter((e) => isAdmin || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id).sort((a, b) => a.date.localeCompare(b.date))
+  const exams = db.exams.filter((e) => matches(term, e.title, courseName(db, e.courseId), db.courses.find((c) => c.id === e.courseId)?.code, e.date, userName(db, e.evaluatorId ?? ''))).filter((e) => isAdmin || e.evaluatorId === user.id || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id).sort((a, b) => a.date.localeCompare(b.date))
+  const canMark = (e: Exam) => isAdmin || e.evaluatorId === user.id
+  const sheetOf = (e: Exam) => db.resultSheets.find((sh) => sh.examId === e.id)
+  const [bulk, setBulk] = useState<{ classId: string; title: string; date: string; gap: number; start: string; end: string; maxMarks: number; evaluators: Record<string, string> } | null>(null)
+  const facultyList = db.users.filter((u) => u.role === 'faculty' && u.status === 'ACTIVE')
+  /** Create one exam per course of a class, each with an allotted evaluator, plus result sheets linked to them. */
+  const createForClass = () => {
+    if (!bulk) return
+    const cls = db.classes.find((c) => c.id === bulk.classId)!
+    const courses = classCourses(db, cls)
+    if (!bulk.date || !courses.length) return alert('Choose a class with courses and a first exam date.')
+    update((d) => {
+      courses.forEach((c, i) => {
+        const date = new Date(new Date(bulk.date).getTime() + i * bulk.gap * 86_400_000).toISOString().slice(0, 10)
+        const evaluatorId = bulk.evaluators[c.id] ?? c.facultyId
+        const id = uid('ex')
+        d.exams.push({ id, courseId: c.id, title: bulk.title, date, start: bulk.start, end: bulk.end, venue: 'Exam Block', maxMarks: bulk.maxMarks, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId, kind: 'Regular' })
+        const sh = d.resultSheets.find((x) => x.courseId === c.id && x.semester === cls.semester && x.term === 'Regular')
+        if (sh) { sh.examId = id; sh.evaluatorId = evaluatorId }
+        else d.resultSheets.push({ ...newSheet(c.id, cls.semester, evaluatorId, id), components: availableComponents(d, c.id, id).filter((x) => x.kind !== 'quiz') })
+      })
+    })
+    for (const c of courses) notify([bulk.evaluators[c.id] ?? c.facultyId], `You are the evaluator for ${c.code} ${bulk.title}. Fill marks in Results.`, '/results')
+    notify(classStudentsOf(cls.id), `${bulk.title} timetable published for ${classLabel(cls)}`, '/exams')
+    audit(user.id, 'EXAM_CREATE_CLASS', `${bulk.title}: ${classLabel(cls)} (${courses.length} courses)`)
+    setBulk(null)
+  }
+  const classStudentsOf = (cid: string) => db.users.filter((u) => u.role === 'student' && u.classId === cid).map((u) => u.id)
   const [tab, setTab] = useState<'exams' | 'reval'>('exams')
   const [marksFor, setMarksFor] = useState<Exam | null>(null)
   const [seatingFor, setSeatingFor] = useState<Exam | null>(null)
@@ -218,7 +257,7 @@ function ExamAdmin() {
 
   return (
     <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search exam or course…' }} title="Examinations" subtitle="Eligibility → seating & invigilation → marks → grading → results" actions={isAdmin && <button className="btn" onClick={() => setCreating(true)}>Schedule exam</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search exam, course or evaluator…' }} title="Examinations" subtitle={isAdmin ? 'Create exams per class, allot evaluators, seating & invigilation; results are published from the result sheets' : 'Exams you teach or evaluate. Enter marks here or in Results.'} actions={isAdmin && <><button className="btn btn-outline" onClick={() => { const c = db.classes[0]; setBulk({ classId: c.id, title: 'End Semester Examination', date: '', gap: 2, start: '09:30', end: '12:30', maxMarks: 100, evaluators: Object.fromEntries(classCourses(db, c).map((x) => [x.id, x.facultyId])) }) }}>Create exams for a class</button><button className="btn" onClick={() => setCreating(true)}>Schedule single exam</button></>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'exams', label: 'Exams', count: exams.length }, { id: 'reval', label: 'Re-evaluation', count: db.revaluations.filter((r) => r.status === 'REQUESTED').length }]} />
       {tab === 'exams' && (
         <div className="stack">
@@ -229,6 +268,15 @@ function ExamAdmin() {
             const g = e.resultsPublished ? examGrades(db, e) : null
             return (
               <Card key={e.id} title={<span>{courseName(db, e.courseId)} · {e.title}</span>} action={<Badge tone={e.resultsPublished ? 'success' : 'info'}>{e.resultsPublished ? 'Results published' : fmtDate(e.date)}</Badge>}>
+                <div className="row gap small" style={{ marginBottom: 8 }}>
+                  <span>Evaluator:</span>
+                  {isAdmin && !e.resultsPublished ? (
+                    <select className="select" style={{ width: 'auto', padding: '4px 8px' }} aria-label="Evaluator" value={e.evaluatorId ?? ''} onChange={(ev) => { const v = ev.target.value; update((d) => { d.exams.find((x) => x.id === e.id)!.evaluatorId = v; const sh = d.resultSheets.find((x) => x.examId === e.id); if (sh) sh.evaluatorId = v }); notify([v], `You are the evaluator for ${courseName(db, e.courseId)} ${e.title}`, '/results') }}>
+                      <option value="">Not allotted</option>{facultyList.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  ) : <strong>{e.evaluatorId ? userName(db, e.evaluatorId) : 'Not allotted'}</strong>}
+                  {e.kind === 'Supplementary' && <Badge tone="warning">Supplementary</Badge>}
+                </div>
                 <div className="row gap wrap small" style={{ marginBottom: 12 }}>
                   <Badge tone={eligible === studs.length ? 'success' : 'warning'}>{eligible}/{studs.length} eligible</Badge>
                   <Badge>{e.grading === 'RELATIVE' ? 'Relative grading' : 'Absolute grading'}{g && g.schemeUsed !== e.grading ? ' (absolute fallback: small class)' : ''}</Badge>
@@ -240,8 +288,8 @@ function ExamAdmin() {
                   <button className="btn btn-outline btn-sm" onClick={() => setEligFor(e)}><CheckCircle2 size={14} /> Eligibility list</button>
                   {isAdmin && !e.resultsPublished && <button className="btn btn-outline btn-sm" onClick={() => generateSeating(e)}><Armchair size={14} /> {e.seating ? 'Regenerate' : 'Generate'} seating &amp; invigilators</button>}
                   {e.seating && <button className="btn btn-outline btn-sm" onClick={() => setSeatingFor(e)}>View seating plan</button>}
-                  {!e.resultsPublished && <button className="btn btn-outline btn-sm" onClick={() => { setMarksFor(e); setMarks(Object.fromEntries(db.results.filter((r) => r.examId === e.id).map((r) => [r.studentId, String(r.marks)]))) }}><FileText size={14} /> Enter marks</button>}
-                  {isAdmin && !e.resultsPublished && <button className="btn btn-sm" disabled={!entered} onClick={() => publish(e)}>Publish results</button>}
+                  {!e.resultsPublished && canMark(e) && <button className="btn btn-outline btn-sm" onClick={() => { setMarksFor(e); setMarks(Object.fromEntries(db.results.filter((r) => r.examId === e.id).map((r) => [r.studentId, String(r.marks)]))) }}><FileText size={14} /> Enter marks</button>}
+                  {sheetOf(e) ? <Link className="btn btn-sm" to="/results">Result sheet ({sheetOf(e)!.status.toLowerCase()})</Link> : isAdmin && !e.resultsPublished && <button className="btn btn-sm" disabled={!entered} onClick={() => publish(e)}>Publish results</button>}
                 </div>
               </Card>
             )
@@ -294,6 +342,27 @@ function ExamAdmin() {
           })}
         </Modal>
       )}
+      {bulk && (() => { const cls = db.classes.find((c) => c.id === bulk.classId)!; const courses = classCourses(db, cls); return (
+        <Modal title="Create exams for a class" onClose={() => setBulk(null)} footer={<><button className="btn btn-ghost" onClick={() => setBulk(null)}>Cancel</button><button className="btn" onClick={createForClass}>Create {courses.length} exam(s)</button></>}>
+          <Field label="Class"><select className="select" value={bulk.classId} onChange={(e) => { const c = db.classes.find((x) => x.id === e.target.value)!; setBulk({ ...bulk, classId: c.id, evaluators: Object.fromEntries(classCourses(db, c).map((x) => [x.id, x.facultyId])) }) }}>{db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}</select></Field>
+          <div className="grid grid-2">
+            <Field label="Exam"><select className="select" value={bulk.title} onChange={(e) => setBulk({ ...bulk, title: e.target.value })}>{['End Semester Examination', 'Mid-Semester Examination', 'Internal Test 1', 'Internal Test 2'].map((t) => <option key={t}>{t}</option>)}</select></Field>
+            <Field label="Max marks"><input className="input" type="number" value={bulk.maxMarks} onChange={(e) => setBulk({ ...bulk, maxMarks: Number(e.target.value) })} /></Field>
+            <Field label="First exam date"><input className="input" type="date" value={bulk.date} onChange={(e) => setBulk({ ...bulk, date: e.target.value })} /></Field>
+            <Field label="Days between papers"><input className="input" type="number" min={0} value={bulk.gap} onChange={(e) => setBulk({ ...bulk, gap: Number(e.target.value) })} /></Field>
+            <Field label="Start"><input className="input" type="time" value={bulk.start} onChange={(e) => setBulk({ ...bulk, start: e.target.value })} /></Field>
+            <Field label="End"><input className="input" type="time" value={bulk.end} onChange={(e) => setBulk({ ...bulk, end: e.target.value })} /></Field>
+          </div>
+          <h3>Allot an evaluator for each course</h3>
+          {courses.length === 0 ? <Empty text="This class has no courses this semester." /> : courses.map((c) => (
+            <div key={c.id} className="row gap">
+              <span className="grow"><strong>{c.code}</strong> {c.name} <span className="small muted">· teacher {userName(db, c.facultyId)}</span></span>
+              <select className="select" style={{ width: 'auto' }} aria-label={`Evaluator for ${c.code}`} value={bulk.evaluators[c.id] ?? c.facultyId} onChange={(e) => setBulk({ ...bulk, evaluators: { ...bulk.evaluators, [c.id]: e.target.value } })}>{facultyList.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
+            </div>
+          ))}
+          {bulk.title === 'End Semester Examination' && <div className="small muted">A result sheet is created for each course and linked to its exam. The evaluator enters the external marks there.</div>}
+        </Modal>
+      ) })()}
       {creating && (
         <Modal title="Schedule exam" onClose={() => setCreating(false)} footer={<><button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button><button className="btn" onClick={create}>Schedule</button></>}>
           <Field label="Course"><select className="select" value={draft.courseId} onChange={(e) => setDraft({ ...draft, courseId: e.target.value })}>{db.courses.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></Field>

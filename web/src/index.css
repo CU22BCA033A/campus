@@ -209,3 +209,8 @@ tbody tr:hover { background: var(--surface-2); }
 
 /* Long modal forms scroll instead of squashing their cards. */
 .modal-body > * { flex-shrink: 0; }
+
+.modal.modal-wide { max-width: 1180px; }
+.sheet-input { width: 64px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); text-align: right; }
+.sheet-input.overridden { border-color: var(--accent); background: var(--accent-light); }
+.sheet-input:disabled { background: transparent; border-color: transparent; color: var(--text); }
