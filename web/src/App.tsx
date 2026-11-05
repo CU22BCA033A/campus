@@ -24,6 +24,8 @@ import HelpCenter from './pages/HelpCenter'
 import Placements from './pages/Placements'
 import LibraryPage from './pages/Library'
 import Alumni from './pages/Alumni'
+import Classes from './pages/Classes'
+import Person from './pages/People'
 import Profile from './pages/Profile'
 
 /** Signed-in, active, and allowed (by role/office) to open the current page. */
@@ -74,6 +76,8 @@ export default function App() {
           <Route path="/procurement" element={<Procurement />} />
           <Route path="/admissions" element={<Admissions />} />
           <Route path="/admin/audit" element={<AuditLog />} />
+          <Route path="/classes" element={<Classes />} />
+          <Route path="/people/:id" element={<Person />} />
           <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="*" element={<Navigate to={user ? '/home' : '/login'} replace />} />

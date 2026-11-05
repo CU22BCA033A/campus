@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PackageCheck, Plus, ShoppingCart } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { approvalChain, fmtDate, inr, userName } from '../lib'
+import { approvalChain, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers, persona } from '../access'
 import type { Asset, Office, PRStatus, PurchaseRequest, User } from '../data/types'
 
@@ -33,8 +33,9 @@ export default function Procurement() {
   const [assetFilter, setAssetFilter] = useState<'all' | 'expiring' | 'expired'>('all')
   const [allot, setAllot] = useState<Asset | null>(null)
   const [allotTo, setAllotTo] = useState('')
+  const [term, setTerm] = useState('')
 
-  const prs = db.purchaseRequests.filter((p) => seesAll || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
+  const prs = db.purchaseRequests.filter((p) => matches(term, p.title, p.vendor, p.department, p.category, p.poNumber, userName(db, p.requestedBy))).filter((p) => seesAll || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
 
   const create = () => {
     if (!draft.title || draft.unitCost <= 0) return
@@ -81,12 +82,12 @@ export default function Procurement() {
   }
 
   const now = Date.now()
-  const assets = db.assets.filter((a) => assetFilter === 'all' || (assetFilter === 'expired' ? a.warrantyUntil < now : a.warrantyUntil >= now && a.warrantyUntil < now + 90 * 86_400_000)).sort((a, b) => a.warrantyUntil - b.warrantyUntil)
+  const assets = db.assets.filter((a) => matches(term, a.tag, a.name, a.category, a.location, a.assignedTo ? userName(db, a.assignedTo) : '')).filter((a) => assetFilter === 'all' || (assetFilter === 'expired' ? a.warrantyUntil < now : a.warrantyUntil >= now && a.warrantyUntil < now + 90 * 86_400_000)).sort((a, b) => a.warrantyUntil - b.warrantyUntil)
   const spend = db.purchaseRequests.filter((p) => ['PO_ISSUED', 'RECEIVED'].includes(p.status)).reduce((s, p) => s + total(p), 0)
 
   return (
     <>
-      <PageHeader title="Procurement & assets" subtitle="Request → approvals by amount → purchase order → receipt → asset register" actions={<button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New purchase request</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search item, vendor, asset tag…' }} title="Procurement & assets" subtitle="Request → approvals by amount → purchase order → receipt → asset register" actions={<button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New purchase request</button>} />
       <div className="grid grid-4">
         <Stat label="Pending approvals" value={db.purchaseRequests.filter((p) => p.status.startsWith('PENDING')).length} tone="warning" icon={<ShoppingCart size={22} />} />
         <Stat label="Committed spend" value={inr(spend)} tone="info" />

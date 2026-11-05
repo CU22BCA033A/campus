@@ -77,7 +77,10 @@ export interface Submission {
   studentId: string
   text: string
   fileName?: string
+  fileData?: string // small attachments kept as a data URL so the teacher can open them
   submittedAt: number
+  gradedBy?: string
+  gradedAt?: number
   marks?: number
   feedback?: string
 }
@@ -162,6 +165,10 @@ export interface Club {
   description: string
   members: string[]
   facultyAdvisorId: string
+  category?: string
+  meeting?: string
+  active?: boolean
+  joinOpen?: boolean
 }
 
 export interface FeeItem {
@@ -278,6 +285,8 @@ export interface DB {
   alumni: Alumnus[]
   refunds: Refund[]
   audit: AuditEntry[]
+  services: ServiceOffering[]
+  appointments: Appointment[]
 }
 
 /* ---------------- Admissions ---------------- */
@@ -523,4 +532,33 @@ export interface AuditEntry {
   actorId: string
   action: string
   detail: string
+}
+
+
+/* ---------------- Help Center: bookable services & appointments ---------------- */
+export interface ServiceOffering {
+  id: string
+  title: string // e.g. "Counselling Centre appointment"
+  description: string
+  office?: Office // handling office, or…
+  ownerFacultyId?: string // …a faculty member (e.g. HOD office hours)
+  category: 'Wellbeing' | 'Academic' | 'Administrative' | 'Career' | 'Financial' | 'Leadership'
+  mode: 'In person' | 'Online' | 'In person or online'
+  location: string
+  durationMin: number
+  slots: { day: number; start: string }[] // weekly availability (1 = Mon … 6 = Sat)
+  maxPerSlot: number
+  confidential: boolean // e.g. counselling: details visible only to the handling office
+  active: boolean
+  createdBy: string
+}
+export interface Appointment {
+  id: string
+  serviceId: string
+  studentId: string
+  at: number
+  reason: string
+  status: 'REQUESTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'DECLINED'
+  note?: string // message from the office (e.g. meeting link or room)
+  createdAt: number
 }

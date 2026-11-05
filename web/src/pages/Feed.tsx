@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { MessageSquare, Send } from 'lucide-react'
 import { uid, update, useCurrentUser, useDB } from '../data/store'
-import { Avatar, Badge, Card, Empty, PageHeader } from '../components/ui'
-import { courseName, coursesFor, timeAgo } from '../lib'
+import { Avatar, Badge, Card, Empty, PageHeader, SearchBox } from '../components/ui'
+import { courseName, coursesFor, timeAgo, matches, userName } from '../lib'
 
 /** courseId: a course id shows that course's thread; undefined shows everything (campus feed). */
 export function Discussion({ courseId }: { courseId?: string }) {
@@ -10,9 +10,10 @@ export function Discussion({ courseId }: { courseId?: string }) {
   const user = useCurrentUser()!
   const [text, setText] = useState('')
   const [reply, setReply] = useState<Record<string, string>>({})
+  const [term, setTerm] = useState('')
   const allowed = new Set(coursesFor(db, user).map((c) => c.id))
   const posts = db.posts
-    .filter((p) => (courseId === undefined ? true : p.courseId === courseId) && (p.courseId === null || allowed.has(p.courseId) || user.role === 'admin'))
+    .filter((p) => matches(term, p.text, userName(db, p.authorId), ...p.replies.map((r) => r.text))).filter((p) => (courseId === undefined ? true : p.courseId === courseId) && (p.courseId === null || allowed.has(p.courseId) || user.role === 'admin'))
     .sort((a, b) => b.createdAt - a.createdAt)
   const author = (id: string) => db.users.find((u) => u.id === id)!
 
@@ -30,6 +31,7 @@ export function Discussion({ courseId }: { courseId?: string }) {
 
   return (
     <div className="stack">
+      <SearchBox value={term} onChange={setTerm} placeholder="Search posts or people…" />
       <Card>
         <div className="row gap" style={{ alignItems: 'flex-start' }}>
           <Avatar name={user.name} color={user.avatarColor} />

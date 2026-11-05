@@ -5,6 +5,8 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../com
 import { fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
 import { OFFICES, persona, TICKET_OFFICE, officeUsers } from '../access'
 import type { DB, Ticket } from '../data/types'
+import AppointmentsPanel from './Appointments'
+import { matches } from '../lib'
 
 const CATS: { id: Ticket['category']; sla: number }[] = [
   { id: 'Grievance', sla: 72 }, { id: 'IT Support', sla: 24 }, { id: 'Maintenance', sla: 48 },
@@ -27,6 +29,8 @@ export default function HelpCenter() {
   const user = useCurrentUser()!
   const isStaff = user.role === 'admin'
   const handles = (t: Ticket) => isStaff && (persona(user) === 'super' || TICKET_OFFICE[t.category] === persona(user))
+  const [area, setArea] = useState<'services' | 'tickets'>(user.role === 'parent' ? 'tickets' : 'services')
+  const [q, setQ] = useState('')
   const [tab, setTab] = useState<'open' | 'resolved'>('open')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ category: 'IT Support' as Ticket['category'], subject: '', description: '', priority: 'Medium' as Ticket['priority'], anonymous: false })
@@ -35,7 +39,7 @@ export default function HelpCenter() {
   const [cert, setCert] = useState<Ticket | null>(null)
 
   const visible = db.tickets.filter((t) => handles(t) || t.raisedBy === user.id || t.assignedTo === user.id)
-  const list = visible.filter((t) => (tab === 'open' ? !['RESOLVED', 'CLOSED'].includes(t.status) : ['RESOLVED', 'CLOSED'].includes(t.status))).sort((a, b) => b.createdAt - a.createdAt)
+  const list = visible.filter((t) => matches(q, t.number, t.subject, t.description, t.category, t.anonymous && t.raisedBy !== user.id ? '' : userName(db, t.raisedBy))).filter((t) => (tab === 'open' ? !['RESOLVED', 'CLOSED'].includes(t.status) : ['RESOLVED', 'CLOSED'].includes(t.status))).sort((a, b) => b.createdAt - a.createdAt)
   const t = view ? db.tickets.find((x) => x.id === view) : null
 
   const create = () => {
@@ -59,7 +63,16 @@ export default function HelpCenter() {
 
   return (
     <>
-      <PageHeader title="Help Center" subtitle="Requests, grievances, certificates and facility bookings, tracked against SLAs" actions={persona(user) !== 'super' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>} />
+      <PageHeader title="Help Center" subtitle="Book counselling, office and department appointments, or raise a request or grievance"
+        search={area === 'tickets' ? { value: q, onChange: setQ, placeholder: 'Search tickets, people…' } : undefined}
+        actions={area === 'tickets' && persona(user) !== 'super' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>} />
+      {user.role !== 'parent' && (
+        <div className="row gap">
+          <button className={`chip ${area === 'services' ? 'active' : ''}`} onClick={() => setArea('services')}>Services &amp; appointments</button>
+          <button className={`chip ${area === 'tickets' ? 'active' : ''}`} onClick={() => setArea('tickets')}>Requests &amp; tickets</button>
+        </div>
+      )}
+      {area === 'services' ? <AppointmentsPanel /> : <>
       <div className="grid grid-4">
         <Stat label="Open" value={visible.filter((x) => x.status === 'OPEN').length} tone="warning" icon={<LifeBuoy size={22} />} />
         <Stat label="In progress" value={visible.filter((x) => x.status === 'IN_PROGRESS').length} tone="info" />
@@ -84,6 +97,7 @@ export default function HelpCenter() {
           </table></div>
         )}
       </Card>
+      </>}
 
       {t && (
         <Modal title={`${t.number} · ${t.subject}`} onClose={() => setView(null)} footer={<>

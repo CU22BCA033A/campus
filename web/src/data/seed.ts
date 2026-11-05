@@ -204,10 +204,10 @@ export function createSeed(): DB {
       { id: 'e3', title: 'Cultural Fest – Utsav', description: 'Music, dance and drama competitions across departments.', venue: 'Open Air Theatre', startsAt: d(15, 17), clubId: 'cl2', rsvps: [], capacity: 1000 },
     ],
     clubs: [
-      { id: 'cl1', name: 'Coding Club', description: 'Competitive programming, hackathons and open source.', members: ['s1', 's2', 's5', 's7'], facultyAdvisorId: 'f1' },
-      { id: 'cl2', name: 'Cultural Committee', description: 'Music, dance, theatre and the annual fest.', members: ['s3', 's4'], facultyAdvisorId: 'f3' },
-      { id: 'cl3', name: 'Entrepreneurship Cell', description: 'Startup talks, pitch days and incubation support.', members: ['s6'], facultyAdvisorId: 'f2' },
-      { id: 'cl4', name: 'NSS', description: 'Community service and social outreach.', members: [], facultyAdvisorId: 'f3' },
+      { id: 'cl1', category: 'Technical', meeting: 'Fridays 4 PM, Lab-3', active: true, joinOpen: true, name: 'Coding Club', description: 'Competitive programming, hackathons and open source.', members: ['s1', 's2', 's5', 's7'], facultyAdvisorId: 'f1' },
+      { id: 'cl2', category: 'Cultural', meeting: 'Wednesdays 5 PM, Open Air Theatre', active: true, joinOpen: true, name: 'Cultural Committee', description: 'Music, dance, theatre and the annual fest.', members: ['s3', 's4'], facultyAdvisorId: 'f3' },
+      { id: 'cl3', category: 'Entrepreneurship', meeting: 'Alternate Thursdays, Innovation Centre', active: true, joinOpen: true, name: 'Entrepreneurship Cell', description: 'Startup talks, pitch days and incubation support.', members: ['s6'], facultyAdvisorId: 'f2' },
+      { id: 'cl4', category: 'Social Service', meeting: 'Saturdays 9 AM', active: true, joinOpen: true, name: 'NSS', description: 'Community service and social outreach.', members: [], facultyAdvisorId: 'f3' },
     ],
     fees: allStudentIds.flatMap((sid, i) => {
       // Roughly half the class has already cleared this semester's fees.

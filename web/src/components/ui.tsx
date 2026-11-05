@@ -1,15 +1,27 @@
 import { useEffect, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { initials } from '../lib'
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export interface SearchProps { value: string; onChange: (v: string) => void; placeholder?: string }
+
+export function SearchBox({ value, onChange, placeholder = 'Search…' }: SearchProps) {
+  return (
+    <div className="search page-search">
+      <Search size={16} className="muted" />
+      <input type="search" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} aria-label={placeholder} />
+      {value && <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => onChange('')} aria-label="Clear search"><X size={14} /></button>}
+    </div>
+  )
+}
+
+export function PageHeader({ title, subtitle, actions, search }: { title: string; subtitle?: string; actions?: ReactNode; search?: SearchProps }) {
   return (
     <div className="page-header">
       <div>
         <h1>{title}</h1>
         {subtitle && <p className="muted">{subtitle}</p>}
       </div>
-      {actions && <div className="row gap">{actions}</div>}
+      {(actions || search) && <div className="row gap wrap">{search && <SearchBox {...search} />}{actions}</div>}
     </div>
   )
 }

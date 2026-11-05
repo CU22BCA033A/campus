@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Armchair, CheckCircle2, FileText, Printer, Ticket } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { courseName, coursesFor, examEligibility, fmtDate, gradeResults, inr, userName } from '../lib'
+import { courseName, coursesFor, examEligibility, fmtDate, gradeResults, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
 import type { DB, Exam } from '../data/types'
 
@@ -144,7 +144,8 @@ function ExamAdmin() {
   const db = useDB()
   const user = useCurrentUser()!
   const isAdmin = can(user, 'manageExams')
-  const exams = db.exams.filter((e) => isAdmin || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id).sort((a, b) => a.date.localeCompare(b.date))
+  const [term, setTerm] = useState('')
+  const exams = db.exams.filter((e) => matches(term, e.title, courseName(db, e.courseId), db.courses.find((c) => c.id === e.courseId)?.code, e.date)).filter((e) => isAdmin || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id).sort((a, b) => a.date.localeCompare(b.date))
   const [tab, setTab] = useState<'exams' | 'reval'>('exams')
   const [marksFor, setMarksFor] = useState<Exam | null>(null)
   const [seatingFor, setSeatingFor] = useState<Exam | null>(null)
@@ -217,7 +218,7 @@ function ExamAdmin() {
 
   return (
     <>
-      <PageHeader title="Examinations" subtitle="Eligibility → seating & invigilation → marks → grading → results" actions={isAdmin && <button className="btn" onClick={() => setCreating(true)}>Schedule exam</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search exam or course…' }} title="Examinations" subtitle="Eligibility → seating & invigilation → marks → grading → results" actions={isAdmin && <button className="btn" onClick={() => setCreating(true)}>Schedule exam</button>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'exams', label: 'Exams', count: exams.length }, { id: 'reval', label: 'Re-evaluation', count: db.revaluations.filter((r) => r.status === 'REQUESTED').length }]} />
       {tab === 'exams' && (
         <div className="stack">

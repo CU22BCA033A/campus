@@ -1,5 +1,13 @@
 import type { DB, User } from './data/types'
 
+/** Case-insensitive "does any field contain the query" (all words must match somewhere). */
+export function matches(q: string, ...fields: (string | number | undefined | null)[]) {
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return true
+  const hay = fields.filter((f) => f !== undefined && f !== null).join(' ').toLowerCase()
+  return words.every((w) => hay.includes(w))
+}
+
 export const fmtDate = (t: number | string) =>
   new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 export const fmtDateTime = (t: number) =>

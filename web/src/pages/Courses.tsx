@@ -3,17 +3,20 @@ import { Link, useParams } from 'react-router-dom'
 import { BookOpen, FileText, Link2, Plus, Presentation, Video } from 'lucide-react'
 import { update, uid, notify, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Progress, Tabs } from '../components/ui'
-import { attendanceStats, coursesFor, fmtDate, userName } from '../lib'
+import { attendanceStats, coursesFor, fmtDate, userName, matches } from '../lib'
 import { Discussion } from './Feed'
+import { can } from '../access'
+import { classLabel } from '../classes'
 import type { Material } from '../data/types'
 
 export function Courses() {
   const db = useDB()
   const user = useCurrentUser()!
-  const courses = coursesFor(db, user)
+  const [term, setTerm] = useState('')
+  const courses = coursesFor(db, user).filter((c) => matches(term, c.code, c.name, userName(db, c.facultyId), c.description))
   return (
     <>
-      <PageHeader title="Courses" subtitle={user.role === 'faculty' ? 'Courses you teach' : user.role === 'admin' ? 'All courses offered this semester' : 'Your enrolled courses this semester'} />
+      <PageHeader actions={can(user, 'manageCourses') && <Link className="btn" to="/classes">Create course / assign teacher</Link>} search={{ value: term, onChange: setTerm, placeholder: 'Search courses or teachers…' }} title="Courses" subtitle={user.role === 'faculty' ? 'Courses you teach' : user.role === 'admin' ? 'All courses offered this semester' : 'Your enrolled courses this semester'} />
       <div className="grid grid-3">
         {courses.map((c, i) => {
           const att = user.role === 'student' ? attendanceStats(db, user.id, c.id) : null
@@ -25,7 +28,7 @@ export function Courses() {
               <div style={{ padding: 16 }} className="stack">
                 <div>
                   <h3>{c.name}</h3>
-                  <div className="small muted">{userName(db, c.facultyId)} · {c.credits} credits</div>
+                  <div className="small muted">{userName(db, c.facultyId)} · {c.credits} credits{user.role !== 'student' && c.classId ? ` · ${classLabel(db.classes.find((x) => x.id === c.classId))}` : ''}</div>
                 </div>
                 {att ? (
                   <div>

@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { BedDouble, Plus, ScanLine, Utensils, Wand2 } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { fmtDateTime, inr, timeAgo, userName } from '../lib'
+import { fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
 import type { MealCoupon } from '../data/types'
 
 const MEALS: MealCoupon['meal'][] = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
@@ -96,6 +96,7 @@ function HostelAdmin() {
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ ok: boolean; text: string } | null>(null)
   const [allotFor, setAllotFor] = useState<string | null>(null)
+  const [term, setTerm] = useState('')
   const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
   const unassigned = students.filter((s) => !db.rooms.some((r) => r.occupants.includes(s.id)))
   const beds = db.rooms.reduce((s, r) => s + r.capacity, 0)
@@ -138,7 +139,7 @@ function HostelAdmin() {
 
   return (
     <>
-      <PageHeader title="Hostel & mess" subtitle="Rooms, allocation, leave approvals and meal coupons" />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search room or student…' }} title="Hostel & mess" subtitle="Rooms, allocation, leave approvals and meal coupons" />
       <div className="grid grid-4">
         <Stat label="Occupancy" value={`${occupied}/${beds}`} hint={`${Math.round((occupied / beds) * 100)}% beds filled`} icon={<BedDouble size={22} />} />
         <Stat label="Awaiting warden" value={db.hostelLeaves.filter((l) => l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING').length} tone="warning" />
@@ -149,7 +150,7 @@ function HostelAdmin() {
         <>
           <div className="row between wrap gap"><span className="muted">{unassigned.length} active students without a room</span><button className="btn btn-outline" disabled={!unassigned.length} onClick={autoAllocate}><Wand2 size={14} /> Auto-allocate free beds</button></div>
           <div className="grid grid-3">
-            {db.rooms.map((r) => (
+            {db.rooms.filter((r) => matches(term, r.number, r.block, r.type, ...r.occupants.map((o) => userName(db, o)))).map((r) => (
               <Card key={r.id} title={`${r.number}`} action={<Badge tone={r.occupants.length >= r.capacity ? 'danger' : 'success'}>{r.occupants.length}/{r.capacity}</Badge>}>
                 <div className="small muted">{r.block} · {r.type} · {inr(r.feePerSem)}/sem</div>
                 <div className="list" style={{ marginTop: 8 }}>
@@ -166,7 +167,7 @@ function HostelAdmin() {
           {db.hostelLeaves.length === 0 ? <Empty text="No leave requests." /> : (
             <div className="table-wrap"><table>
               <thead><tr><th>Student</th><th>Reason</th><th>Dates</th><th>Parent</th><th>Warden</th><th /></tr></thead>
-              <tbody>{[...db.hostelLeaves].sort((a, b) => b.createdAt - a.createdAt).map((l) => (
+              <tbody>{db.hostelLeaves.filter((l) => matches(term, userName(db, l.studentId), l.reason)).sort((a, b) => b.createdAt - a.createdAt).map((l) => (
                 <tr key={l.id}>
                   <td>{userName(db, l.studentId)}</td><td>{l.reason}</td><td className="small">{fmtDateTime(l.from)} → {fmtDateTime(l.to)}</td>
                   <td><Badge tone={l.parentStatus === 'APPROVED' ? 'success' : l.parentStatus === 'REJECTED' ? 'danger' : 'warning'}>{l.parentStatus}</Badge></td>

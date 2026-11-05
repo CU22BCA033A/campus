@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Star } from 'lucide-react'
 import { uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, PageHeader } from '../components/ui'
-import { coursesFor, fmtDate, userName } from '../lib'
+import { coursesFor, fmtDate, userName, matches } from '../lib'
 
 function Stars({ value, onChange }: { value: number; onChange?: (n: number) => void }) {
   return (
@@ -20,14 +20,15 @@ export default function Feedback() {
   const db = useDB()
   const user = useCurrentUser()!
   const courses = coursesFor(db, user)
+  const [term, setTerm] = useState('')
   const [drafts, setDrafts] = useState<Record<string, { rating: number; comment: string }>>({})
 
   if (user.role !== 'student') {
     return (
       <>
-        <PageHeader title="Faculty feedback" subtitle="Anonymous feedback submitted by students" />
+        <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search course or teacher…' }} title="Faculty feedback" subtitle="Anonymous feedback submitted by students" />
         <div className="grid grid-2">
-          {courses.map((c) => {
+          {courses.filter((c) => matches(term, c.code, c.name, userName(db, c.facultyId))).map((c) => {
             const fb = db.feedback.filter((f) => f.courseId === c.id)
             const avg = fb.length ? fb.reduce((s, f) => s + f.rating, 0) / fb.length : 0
             return (
@@ -44,9 +45,9 @@ export default function Feedback() {
 
   return (
     <>
-      <PageHeader title="Faculty feedback" subtitle="Your feedback is anonymous and helps improve teaching" />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search course or teacher…' }} title="Faculty feedback" subtitle="Your feedback is anonymous and helps improve teaching" />
       <div className="grid grid-2">
-        {courses.map((c) => {
+        {courses.filter((c) => matches(term, c.code, c.name, userName(db, c.facultyId))).map((c) => {
           const done = db.feedback.find((f) => f.courseId === c.id && f.studentId === user.id)
           const d = drafts[c.id] ?? { rating: 0, comment: '' }
           return (

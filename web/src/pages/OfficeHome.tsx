@@ -3,7 +3,8 @@ import { ArrowRight, Megaphone } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Stat } from '../components/ui'
 import { OFFICES, persona, TICKET_OFFICE } from '../access'
-import { attendanceStats, feeOutstanding, fmtDate, inr, timeAgo, userName } from '../lib'
+import { attendanceStats, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo, userName } from '../lib'
+import { classCourses, classLabel, classResults } from '../classes'
 import type { DB, Office } from '../data/types'
 
 interface Task { text: string; sub?: string; to: string; tone?: 'warning' | 'danger' | 'info' }
@@ -19,6 +20,7 @@ function view(db: DB, office: Office): OfficeView {
   const tickets = db.tickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status) && (office === 'super' || TICKET_OFFICE[t.category] === office))
   const ticketTasks: Task[] = tickets.map((t) => ({ text: `${t.number}: ${t.subject}`, sub: `${t.category} · ${timeAgo(t.createdAt)}`, to: '/help', tone: t.priority === 'High' ? 'danger' : 'info' }))
   const students = db.users.filter((u) => u.role === 'student')
+  const apptTasks: Task[] = db.appointments.filter((a) => a.status === 'REQUESTED' && db.services.some((sv) => sv.id === a.serviceId && (office === 'super' || sv.office === office))).map((a) => { const sv = db.services.find((x) => x.id === a.serviceId)!; return { text: `Appointment request: ${sv.title}`, sub: `${sv.confidential ? 'Confidential' : userName(db, a.studentId)} · ${fmtDateTime(a.at)}`, to: '/help', tone: 'warning' as const } })
 
   switch (office) {
     case 'registrar': {
@@ -38,7 +40,7 @@ function view(db: DB, office: Office): OfficeView {
           ...(toShortlist.length ? [{ text: `Generate merit list for ${toShortlist.length} verified applicant(s)`, to: '/admissions' }] : []),
           ...toAdmit.map((a) => ({ text: `Admit & issue student ID: ${a.name}`, to: '/admissions', tone: 'info' as const })),
           ...prs.map((p) => ({ text: `Registrar approval: ${p.title}`, sub: inr(p.quantity * p.unitCost), to: '/procurement', tone: 'warning' as const })),
-          ...ticketTasks,
+          ...apptTasks, ...ticketTasks,
         ],
         shortcuts: [{ to: '/admissions', label: 'Admissions' }, { to: '/admin/users', label: 'Student records' }, { to: '/courses', label: 'Courses' }, { to: '/timetable', label: 'Timetable' }, { to: '/venues', label: 'Venue booking' }, { to: '/admin/reports', label: 'Reports' }],
       }
@@ -60,7 +62,7 @@ function view(db: DB, office: Office): OfficeView {
           ...refunds.map((r) => ({ text: `Refund ${r.status === 'REQUESTED' ? 'request' : 'to process'}: ${userName(db, r.studentId)}`, sub: inr(r.amount), to: '/fees', tone: 'warning' as const })),
           ...prs.map((p) => ({ text: `${p.status === 'PENDING_FINANCE' ? 'Finance approval' : p.status === 'APPROVED' ? 'Issue PO' : 'Receive consignment'}: ${p.title}`, sub: inr(p.quantity * p.unitCost), to: '/procurement', tone: 'info' as const })),
           ...(overdue.length ? [{ text: `${overdue.length} overdue fee item(s): send reminders`, to: '/fees', tone: 'danger' as const }] : []),
-          ...ticketTasks,
+          ...apptTasks, ...ticketTasks,
         ],
         shortcuts: [{ to: '/fees', label: 'Fee collection' }, { to: '/procurement', label: 'Procurement & assets' }, { to: '/hr', label: 'Payroll' }, { to: '/admin/reports', label: 'Reports' }],
       }
@@ -81,7 +83,7 @@ function view(db: DB, office: Office): OfficeView {
         tasks: [
           ...leaves.map((l) => ({ text: `Hostel leave: ${userName(db, l.studentId)}`, sub: `${l.reason} · parent approved`, to: '/hostel', tone: 'warning' as const })),
           ...passes.map((g) => ({ text: `Gate pass: ${userName(db, g.studentId)}`, sub: g.reason, to: '/gate-pass', tone: 'info' as const })),
-          ...ticketTasks,
+          ...apptTasks, ...ticketTasks,
         ],
         shortcuts: [{ to: '/hostel', label: 'Rooms & allocation' }, { to: '/gate-pass', label: 'Gate passes' }, { to: '/help', label: 'Maintenance requests' }],
       }
@@ -101,7 +103,7 @@ function view(db: DB, office: Office): OfficeView {
         tasks: [
           ...pending.map((l) => ({ text: `${l.type} leave: ${userName(db, l.staffId)}`, sub: `${fmtDate(l.from)} – ${fmtDate(l.to)} · ${l.days} day(s)`, to: '/hr', tone: 'warning' as const })),
           ...(!ran ? [{ text: `Run payroll for ${month}`, to: '/hr', tone: 'danger' as const }] : []),
-          ...ticketTasks,
+          ...apptTasks, ...ticketTasks,
         ],
         shortcuts: [{ to: '/hr', label: 'Leave & payroll' }, { to: '/admin/users', label: 'Staff records' }],
       }
@@ -123,8 +125,11 @@ function view(db: DB, office: Office): OfficeView {
           ...noSeating.map((e) => ({ text: `Generate seating: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, sub: fmtDate(e.date), to: '/exams', tone: 'warning' as const })),
           ...toPublish.map((e) => ({ text: `Publish results: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, to: '/exams', tone: 'info' as const })),
           ...reval.map((r) => ({ text: `Re-evaluation: ${userName(db, r.studentId)}`, sub: r.reason, to: '/exams' })),
+          ...db.classes.filter((c) => classResults(db, c).ready).map((c) => ({ text: `Results complete: promote ${classLabel(c)}`, to: '/classes', tone: 'info' as const })),
+          ...db.classes.filter((c) => classCourses(db, c).length === 0).map((c) => ({ text: `Create courses & assign teachers: ${classLabel(c)}`, to: '/classes', tone: 'warning' as const })),
+          ...apptTasks,
         ],
-        shortcuts: [{ to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
+        shortcuts: [{ to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
       }
     }
     case 'library': {
@@ -137,7 +142,7 @@ function view(db: DB, office: Office): OfficeView {
           { label: 'Overdue', value: overdue.length, tone: 'danger', to: '/library' },
           { label: 'Reservations', value: db.books.reduce((s, b) => s + b.reservations.length, 0), tone: 'accent', to: '/library' },
         ],
-        tasks: overdue.map((l) => ({ text: `Overdue: ${db.books.find((b) => b.id === l.bookId)?.title}`, sub: `${userName(db, l.userId)} · due ${fmtDate(l.dueAt)}`, to: '/library', tone: 'danger' as const })),
+        tasks: [...apptTasks, ...overdue.map((l) => ({ text: `Overdue: ${db.books.find((b) => b.id === l.bookId)?.title}`, sub: `${userName(db, l.userId)} · due ${fmtDate(l.dueAt)}`, to: '/library', tone: 'danger' as const }))],
         shortcuts: [{ to: '/library', label: 'Catalogue & issue desk' }],
       }
     }
@@ -152,8 +157,45 @@ function view(db: DB, office: Office): OfficeView {
           { label: 'Students placed', value: `${placed.size}/${students.length}`, tone: 'success', to: '/placements' },
           { label: 'Alumni mentors', value: db.alumni.filter((a) => a.mentor).length, tone: 'info', to: '/alumni' },
         ],
-        tasks: applied.map(({ d, a }) => ({ text: `Screen ${userName(db, a.studentId)} for ${d.company}`, sub: d.role, to: '/placements', tone: 'warning' as const })),
+        tasks: [...apptTasks, ...applied.map(({ d, a }) => ({ text: `Screen ${userName(db, a.studentId)} for ${d.company}`, sub: d.role, to: '/placements', tone: 'warning' as const }))],
         shortcuts: [{ to: '/placements', label: 'Drives' }, { to: '/alumni', label: 'Alumni network' }],
+      }
+    }
+    case 'admissions': {
+      const by = (st: string) => db.applications.filter((a) => a.stage === st)
+      return {
+        stats: [
+          { label: 'New enquiries', value: by('ENQUIRY').length, tone: 'info', to: '/admissions' },
+          { label: 'Documents to verify', value: by('APPLIED').length, tone: 'warning', to: '/admissions' },
+          { label: 'Offers awaiting fee', value: by('OFFERED').length, tone: 'accent', to: '/admissions' },
+          { label: 'Admitted this cycle', value: by('ADMITTED').length, tone: 'success', to: '/admissions' },
+        ],
+        tasks: [
+          ...by('ENQUIRY').map((a) => ({ text: `Follow up enquiry: ${a.name}`, sub: `${a.program} · ${a.phone}`, to: '/admissions', tone: 'info' as const })),
+          ...by('APPLIED').map((a) => ({ text: `Verify documents: ${a.name}`, sub: a.program, to: '/admissions', tone: 'warning' as const })),
+          ...(by('VERIFIED').length ? [{ text: `Generate merit list (${by('VERIFIED').length} verified)`, to: '/admissions' }] : []),
+          ...by('SHORTLISTED').map((a) => ({ text: `Send offer letter: ${a.name}`, sub: `Rank #${a.rank}`, to: '/admissions', tone: 'info' as const })),
+          ...by('FEE_PAID').map((a) => ({ text: `Admit & issue student ID: ${a.name}`, to: '/admissions', tone: 'warning' as const })),
+          ...apptTasks,
+        ],
+        shortcuts: [{ to: '/admissions', label: 'Admissions pipeline' }, { to: '/admin/users', label: 'Student profiles' }, { to: '/classes', label: 'Classes' }],
+      }
+    }
+    case 'studentAffairs': {
+      const upcoming = db.events.filter((e) => e.startsAt > now())
+      return {
+        stats: [
+          { label: 'Clubs', value: db.clubs.filter((c) => c.active !== false).length, hint: `${db.clubs.reduce((s, c) => s + c.members.length, 0)} memberships`, to: '/clubs' },
+          { label: 'Upcoming events', value: upcoming.length, tone: 'accent', to: '/events' },
+          { label: 'Open grievances', value: tickets.length, tone: 'danger', to: '/help' },
+          { label: 'Counselling requests', value: apptTasks.length, tone: 'warning', to: '/help' },
+        ],
+        tasks: [
+          ...apptTasks,
+          ...ticketTasks,
+          ...db.clubs.filter((c) => c.active !== false && c.members.length === 0).map((c) => ({ text: `No members yet: ${c.name}`, sub: 'Promote the club or archive it', to: '/clubs' })),
+        ],
+        shortcuts: [{ to: '/clubs', label: 'Clubs & chapters' }, { to: '/events', label: 'Events' }, { to: '/polls', label: 'Polls & surveys' }, { to: '/help', label: 'Counselling & grievances' }],
       }
     }
     default: {
@@ -166,7 +208,7 @@ function view(db: DB, office: Office): OfficeView {
         ],
         tasks: [
           ...db.users.filter((u) => u.status === 'LOCKED').map((u) => ({ text: `Locked account: ${u.name}`, to: '/admin/users', tone: 'danger' as const })),
-          ...ticketTasks,
+          ...apptTasks, ...ticketTasks,
         ],
         shortcuts: [{ to: '/admin/users', label: 'User management' }, { to: '/admin/audit', label: 'Audit log' }, { to: '/admin/reports', label: 'Reports' }, { to: '/help', label: 'IT support tickets' }],
       }

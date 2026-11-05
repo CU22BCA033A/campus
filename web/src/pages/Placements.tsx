@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Briefcase, Plus } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat } from '../components/ui'
-import { fmtDate, fmtDateTime, userName } from '../lib'
+import { fmtDate, fmtDateTime, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
 import type { PlacementDrive, User } from '../data/types'
 
@@ -21,10 +21,11 @@ export default function Placements() {
   const user = useCurrentUser()!
   const isStudent = user.role === 'student'
   const canManage = can(user, 'managePlacements')
+  const [term, setTerm] = useState('')
   const [creating, setCreating] = useState(false)
   const [manage, setManage] = useState<string | null>(null)
   const [draft, setDraft] = useState({ company: '', role: '', kind: 'Full-time' as PlacementDrive['kind'], ctc: '', minCgpa: 6, maxBacklogs: 0, deadline: '', description: '' })
-  const drives = [...db.drives].sort((a, b) => b.deadline - a.deadline)
+  const drives = db.drives.filter((d) => matches(term, d.company, d.role, d.kind, d.ctc, ...(canManage ? d.applications.map((a) => userName(db, a.studentId)) : []))).sort((a, b) => b.deadline - a.deadline)
   const placed = new Set(db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'SELECTED').map((a) => a.studentId)))
   const students = db.users.filter((u) => u.role === 'student')
 
@@ -48,7 +49,7 @@ export default function Placements() {
 
   return (
     <>
-      <PageHeader title="Placements & internships" subtitle={isStudent ? 'Openings you are eligible for, and your applications' : 'Drives, eligibility, shortlists and interview scheduling'} actions={canManage && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New drive</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search company, role or student…' }} title="Placements & internships" subtitle={isStudent ? 'Openings you are eligible for, and your applications' : 'Drives, eligibility, shortlists and interview scheduling'} actions={canManage && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New drive</button>} />
       <div className="grid grid-4">
         <Stat label="Active drives" value={db.drives.filter((d) => d.deadline > Date.now()).length} icon={<Briefcase size={22} />} />
         <Stat label="Students placed" value={`${placed.size}/${students.length}`} tone="success" />

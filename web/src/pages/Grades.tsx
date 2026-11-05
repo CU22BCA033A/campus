@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, PageHeader, Stat } from '../components/ui'
-import { attendanceStats, coursesFor, gradeFor, internalPct as internal } from '../lib'
+import { attendanceStats, coursesFor, gradeFor, internalPct as internal, matches, userName } from '../lib'
 
 export default function Grades() {
   const user = useCurrentUser()!
@@ -54,6 +54,7 @@ function Gradebook() {
   const user = useCurrentUser()!
   const courses = coursesFor(db, user)
   const [courseId, setCourseId] = useState(courses[0]?.id ?? '')
+  const [term, setTerm] = useState('')
   const course = db.courses.find((c) => c.id === courseId)
   if (!course) return null
   const as = db.assignments.filter((a) => a.courseId === course.id)
@@ -61,7 +62,7 @@ function Gradebook() {
 
   return (
     <>
-      <PageHeader title="Gradebook" subtitle="Track student progress across assessments" actions={
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Gradebook" subtitle="Track student progress across assessments" actions={
         <select className="select" style={{ width: 'auto' }} value={courseId} onChange={(e) => setCourseId(e.target.value)}>
           {courses.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
         </select>
@@ -71,7 +72,7 @@ function Gradebook() {
           <table>
             <thead><tr><th>Student</th>{as.map((a) => <th key={a.id} title={a.title}>{a.title.slice(0, 14)}… /{a.maxMarks}</th>)}{qs.map((q) => <th key={q.id} title={q.title}>{q.title.slice(0, 12)}… /{q.questions.length}</th>)}<th>Internal %</th><th>Grade</th></tr></thead>
             <tbody>
-              {course.studentIds.map((sid) => {
+              {course.studentIds.filter((sid) => matches(term, userName(db, sid), db.users.find((u) => u.id === sid)?.rollNo)).map((sid) => {
                 const s = db.users.find((u) => u.id === sid)!
                 const pct = internal(db, sid, course.id)
                 return (

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { CheckCircle2, FileCheck2, GraduationCap, Plus, Upload, XCircle } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { fmtDate, inr, timeAgo } from '../lib'
+import { resyncRosters } from '../classes'
+import { fmtDate, inr, timeAgo, matches } from '../lib'
 import { officeUsers } from '../access'
 import type { Application, AppStage, DB } from '../data/types'
 
@@ -46,6 +47,7 @@ export default function Admissions() {
   const [open, setOpen] = useState<Application | null>(null)
   const [importing, setImporting] = useState(false)
   const [csv, setCsv] = useState('')
+  const [term, setTerm] = useState('')
 
   const move = (a: Application, to: AppStage, patch: Partial<Application> = {}) => {
     update((d) => {
@@ -84,16 +86,20 @@ export default function Admissions() {
     const seq = db.users.filter((u) => u.rollNo?.startsWith(`${yy}${code}`)).length + 1
     const rollNo = `${yy}${code}${String(seq).padStart(3, '0')}`
     const studentId = uid('s')
+    const year = new Date().getFullYear()
+    const classId = db.classes.find((c) => c.program === a.program && c.batch === year && c.semester === 1)?.id ?? `cls-${a.program.toLowerCase().replace(/[^a-z]/g, '')}-${year}-a`
     const local = a.name.toLowerCase().replace(/[^a-z]+/g, '.')
     const { base, waiver } = offerAmount(db, a)
     update((d) => {
       d.users.push({
         id: studentId, name: a.name, email: `${local}@campus.edu`, password: 'welcome123', role: 'student', status: 'ACTIVE',
-        department: a.program === 'BCA' ? 'Computer Applications' : a.program, rollNo, program: a.program, semester: 1, section: 'A',
+        department: a.program === 'BCA' ? 'Computer Applications' : a.program, rollNo, program: a.program, semester: 1, section: 'A', classId, batch: year,
         phone: a.phone, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#6b3fa0', cgpa: 0, backlogs: 0,
       })
       d.fees.push({ id: uid('fee'), studentId, title: 'Tuition fee – Semester 1', amount: base, scholarship: waiver, paidAmount: base - waiver, paidAt: Date.now(), txnId: `ADM${Date.now().toString().slice(-6)}`, dueAt: Date.now(), head: 'Tuition' })
-      if (a.program === 'BCA') d.courses.forEach((c) => c.studentIds.push(studentId))
+      // Place the new student in this year's first-semester class for the programme (created if needed).
+      if (!d.classes.some((c) => c.id === classId)) d.classes.push({ id: classId, program: a.program, batch: year, section: 'A', semester: 1, maxSemesters: 6 })
+      resyncRosters(d)
       const x = d.applications.find((y) => y.id === a.id)!
       x.stage = 'ADMITTED'; x.studentId = studentId; x.rollNo = rollNo
       x.history.push({ stage: 'ADMITTED', at: Date.now(), by: user.id })
@@ -114,13 +120,13 @@ export default function Admissions() {
     setImporting(false); setCsv('')
   }
 
-  const list = db.applications.filter((a) => a.stage === stage).sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.createdAt - a.createdAt)
+  const list = db.applications.filter((a) => a.stage === stage && matches(term, a.name, a.email, a.phone, a.program, a.rollNo, a.category)).sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.createdAt - a.createdAt)
   const count = (s: AppStage) => db.applications.filter((a) => a.stage === s).length
   const current = open && db.applications.find((a) => a.id === open.id)
 
   return (
     <>
-      <PageHeader title="Admissions" subtitle="Enquiry → application → verification → merit → offer → fee → student ID" actions={<>
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search applicant, email, phone…' }} title="Admissions" subtitle="Enquiry → application → verification → merit → offer → fee → student ID" actions={<>
         <button className="btn btn-outline" onClick={() => setImporting(true)}><Upload size={14} /> Bulk import</button>
         <Link className="btn btn-outline" to="/apply" target="_blank">Open application form</Link>
       </>} />

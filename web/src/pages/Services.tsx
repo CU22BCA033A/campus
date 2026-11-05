@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Bus, CheckCircle2, CreditCard, DoorOpen, Phone, Plus, Receipt, ShieldCheck, Undo2 } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
-import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { feeOutstanding, fmtDate, fmtDateTime, inr, userName } from '../lib'
+import { Badge, Card, Empty, Field, Modal, PageHeader, SearchBox, Stat, Tabs } from '../components/ui'
+import { classLabel } from '../classes'
+import { feeOutstanding, fmtDate, fmtDateTime, inr, matches, userName } from '../lib'
 import { can, officeUsers } from '../access'
 import type { FeeItem } from '../data/types'
 
@@ -170,6 +171,26 @@ function FeeAdmin() {
   const me = useCurrentUser()!
   const [tab, setTab] = useState<'dues' | 'refunds' | 'scholarships'>('dues')
   const students = db.users.filter((u) => u.role === 'student')
+  const [q, setQ] = useState('')
+  const [batchF, setBatchF] = useState('all')
+  const [progF, setProgF] = useState('all')
+  const [classF, setClassF] = useState('all')
+  const [statusF, setStatusF] = useState<'all' | 'due' | 'overdue' | 'clear'>('all')
+  const [headF, setHeadF] = useState('all')
+  const batches = [...new Set(students.map((s) => s.batch).filter(Boolean))].sort() as number[]
+  const programs = [...new Set(students.map((s) => s.program).filter(Boolean))].sort() as string[]
+  const feesOf = (sid: string) => db.fees.filter((x) => x.studentId === sid && (headF === 'all' || (x.head ?? 'Other') === headF))
+  const rows = students
+    .filter((s) => (batchF === 'all' || String(s.batch) === batchF) && (progF === 'all' || s.program === progF) && (classF === 'all' || s.classId === classF))
+    .filter((s) => matches(q, s.name, s.rollNo, s.email, s.phone, s.program, s.batch, classLabel(db.classes.find((c) => c.id === s.classId)), ...db.fees.filter((f) => f.studentId === s.id).map((f) => `${f.title} ${f.txnId ?? ''}`)))
+    .map((s) => { const f = feesOf(s.id); const out = f.reduce((a, x) => a + feeOutstanding(x), 0); const overdue = f.some((x) => feeOutstanding(x) > 0 && x.dueAt < Date.now()); return { s, f, out, overdue } })
+    .filter((r) => statusF === 'all' || (statusF === 'clear' ? r.out === 0 : statusF === 'overdue' ? r.overdue : r.out > 0))
+  const totals = rows.reduce((t, r) => ({ paid: t.paid + r.f.reduce((a, x) => a + (x.paidAmount ?? (x.paidAt ? x.amount : 0)), 0), out: t.out + r.out }), { paid: 0, out: 0 })
+  const exportDues = () => {
+    const lines = [['Roll no', 'Name', 'Programme', 'Batch', 'Class', 'Paid', 'Outstanding', 'Status'], ...rows.map((r) => [r.s.rollNo ?? '', r.s.name, r.s.program ?? '', String(r.s.batch ?? ''), classLabel(db.classes.find((c) => c.id === r.s.classId)), String(r.f.reduce((a, x) => a + (x.paidAmount ?? (x.paidAt ? x.amount : 0)), 0)), String(r.out), r.out ? (r.overdue ? 'Overdue' : 'Due') : 'Clear'])]
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.map((l) => l.map((v) => `"${v}"`).join(',')).join('\n')], { type: 'text/csv' })); a.download = 'fee-dues.csv'; a.click()
+  }
+  const remind = (sid: string, out: number) => notify([sid, ...db.users.filter((u) => u.role === 'parent' && u.wardIds?.includes(sid)).map((u) => u.id)], `Reminder: ${inr(out)} fee outstanding`, '/fees')
   const [sch, setSch] = useState({ name: '', kind: 'PERCENT' as 'PERCENT' | 'FIXED', value: 10, minMerit: 80 })
   const [grant, setGrant] = useState({ studentId: '', scholarshipId: '' })
 
@@ -195,23 +216,36 @@ function FeeAdmin() {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'dues', label: 'Outstanding dues' }, { id: 'refunds', label: 'Refunds', count: db.refunds.filter((r) => r.status === 'REQUESTED' || r.status === 'APPROVED').length }, { id: 'scholarships', label: 'Scholarships', count: db.scholarships.length }]} />
       {tab === 'dues' && (
         <Card>
+          <div className="row gap wrap" style={{ marginBottom: 12 }}>
+            <SearchBox value={q} onChange={setQ} placeholder="Search name, roll no., transaction…" />
+            <select className="select" style={{ width: 'auto' }} value={progF} onChange={(e) => setProgF(e.target.value)} aria-label="Programme"><option value="all">All programmes</option>{programs.map((p) => <option key={p}>{p}</option>)}</select>
+            <select className="select" style={{ width: 'auto' }} value={batchF} onChange={(e) => setBatchF(e.target.value)} aria-label="Batch"><option value="all">All batches</option>{batches.map((b) => <option key={b} value={b}>Batch {b}</option>)}</select>
+            <select className="select" style={{ width: 'auto' }} value={classF} onChange={(e) => setClassF(e.target.value)} aria-label="Class"><option value="all">All classes</option>{db.classes.filter((c) => (progF === 'all' || c.program === progF) && (batchF === 'all' || String(c.batch) === batchF)).map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}</select>
+            <select className="select" style={{ width: 'auto' }} value={headF} onChange={(e) => setHeadF(e.target.value)} aria-label="Fee head"><option value="all">All fee heads</option>{['Tuition', 'Exam', 'Hostel', 'Transport', 'Other'].map((h) => <option key={h}>{h}</option>)}</select>
+            <select className="select" style={{ width: 'auto' }} value={statusF} onChange={(e) => setStatusF(e.target.value as typeof statusF)} aria-label="Status"><option value="all">Any status</option><option value="due">Has dues</option><option value="overdue">Overdue</option><option value="clear">Clear</option></select>
+          </div>
+          <div className="row gap wrap small" style={{ marginBottom: 10 }}>
+            <Badge tone="info">{rows.length} student(s)</Badge><Badge tone="success">Paid {inr(totals.paid)}</Badge><Badge tone="danger">Outstanding {inr(totals.out)}</Badge>
+            <div className="grow" />
+            {rows.some((r) => r.out > 0) && <button className="btn btn-outline btn-sm" onClick={() => { rows.filter((r) => r.out > 0).forEach((r) => remind(r.s.id, r.out)); alert(`Reminders sent to ${rows.filter((r) => r.out > 0).length} student(s) and their parents.`) }}>Remind all filtered</button>}
+            <button className="btn btn-outline btn-sm" onClick={exportDues}>Export CSV</button>
+          </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Student</th><th>Roll no.</th><th>Paid</th><th>Scholarship</th><th>Outstanding</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Student</th><th>Class</th><th>Paid</th><th>Scholarship</th><th>Outstanding</th><th>Status</th><th /></tr></thead>
               <tbody>
-                {students.map((s) => {
-                  const f = db.fees.filter((x) => x.studentId === s.id)
-                  const out = f.reduce((a, x) => a + feeOutstanding(x), 0)
-                  return (
-                    <tr key={s.id}>
-                      <td>{s.name}</td><td>{s.rollNo}</td><td>{inr(f.reduce((a, x) => a + (x.paidAmount ?? (x.paidAt ? x.amount : 0)), 0))}</td><td>{inr(f.reduce((a, x) => a + (x.scholarship ?? 0), 0))}</td><td>{inr(out)}</td>
-                      <td><Badge tone={out ? 'warning' : 'success'}>{out ? 'Due' : 'Clear'}</Badge></td>
-                      <td>{out > 0 && <button className="btn btn-outline btn-sm" onClick={() => notify([s.id, ...db.users.filter((u) => u.role === 'parent' && u.wardIds?.includes(s.id)).map((u) => u.id)], `Reminder: ${inr(out)} fee outstanding`, '/fees')}>Send reminder</button>}</td>
-                    </tr>
-                  )
-                })}
+                {rows.map(({ s, f, out, overdue }) => (
+                  <tr key={s.id}>
+                    <td>{s.name}<div className="small muted">{s.rollNo}</div></td>
+                    <td className="small">{classLabel(db.classes.find((c) => c.id === s.classId))}</td>
+                    <td>{inr(f.reduce((a, x) => a + (x.paidAmount ?? (x.paidAt ? x.amount : 0)), 0))}</td><td>{inr(f.reduce((a, x) => a + (x.scholarship ?? 0), 0))}</td><td>{inr(out)}</td>
+                    <td><Badge tone={out ? (overdue ? 'danger' : 'warning') : 'success'}>{out ? (overdue ? 'Overdue' : 'Due') : 'Clear'}</Badge></td>
+                    <td>{out > 0 && <button className="btn btn-outline btn-sm" onClick={() => remind(s.id, out)}>Send reminder</button>}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
+            {rows.length === 0 && <Empty text="No students match these filters." />}
           </div>
         </Card>
       )}
@@ -266,8 +300,9 @@ export function GatePass() {
   const user = useCurrentUser()!
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ reason: '', out: '', back: '' })
+  const [term, setTerm] = useState('')
   const isStudent = user.role === 'student'
-  const list = db.gatePasses.filter((g) => !isStudent || g.studentId === user.id).sort((a, b) => b.outAt - a.outAt)
+  const list = db.gatePasses.filter((g) => matches(term, g.reason, g.status, userName(db, g.studentId), db.users.find((u) => u.id === g.studentId)?.rollNo)).filter((g) => !isStudent || g.studentId === user.id).sort((a, b) => b.outAt - a.outAt)
 
   const apply = () => {
     if (!draft.reason || !draft.out || !draft.back) return
@@ -283,7 +318,7 @@ export function GatePass() {
 
   return (
     <>
-      <PageHeader title="Gate pass" subtitle={isStudent ? 'Request permission to leave campus' : 'Review student gate pass requests'} actions={isStudent && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Request gate pass</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Gate pass" subtitle={isStudent ? 'Request permission to leave campus' : 'Review student gate pass requests'} actions={isStudent && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Request gate pass</button>} />
       {list.length === 0 && <Card><Empty icon={<DoorOpen />} text="No gate pass requests." /></Card>}
       <div className="grid grid-2">
         {list.map((g) => (
@@ -323,13 +358,14 @@ export function Transport() {
   const db = useDB()
   const user = useCurrentUser()!
   const mine = db.routes.find((r) => r.subscribers.includes(user.id))
+  const [term, setTerm] = useState('')
   const subscribe = (id: string) => update((d) => { d.routes.forEach((r) => { r.subscribers = r.subscribers.filter((s) => s !== user.id); if (r.id === id) r.subscribers.push(user.id) }) })
   return (
     <>
-      <PageHeader title="Transport" subtitle="Campus bus routes and timings" />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search route, stop or bus…' }} title="Transport" subtitle="Campus bus routes and timings" />
       {mine && <div className="alert alert-info"><Bus size={16} /> You are registered on <strong>&nbsp;{mine.name}</strong>&nbsp;· Bus {mine.bus}</div>}
       <div className="grid grid-3">
-        {db.routes.map((r) => (
+        {db.routes.filter((r) => matches(term, r.name, r.bus, r.driver, ...r.stops.map((x) => x.name))).map((r) => (
           <Card key={r.id} title={r.name} action={mine?.id === r.id && <Badge tone="success">My route</Badge>}>
             <div className="stack">
               <div className="small muted">Bus {r.bus} · {r.subscribers.length} riders</div>
@@ -361,6 +397,7 @@ export function Venues() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [booking, setBooking] = useState<{ venue: string; slot: string } | null>(null)
   const [purpose, setPurpose] = useState('')
+  const [term, setTerm] = useState('')
   const book = () => {
     if (!booking || !purpose.trim()) return
     update((d) => { d.bookings.push({ id: uid('b'), venue: booking.venue, slot: booking.slot, date, purpose, bookedBy: user.id }) })
@@ -368,13 +405,13 @@ export function Venues() {
   }
   return (
     <>
-      <PageHeader title="Venue booking" subtitle="Reserve halls and labs" actions={<input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 180 }} />} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Venue booking" subtitle="Reserve halls and labs" actions={<input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 180 }} />} />
       <Card>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Venue</th>{SLOTS.map((s) => <th key={s}>{s}</th>)}</tr></thead>
             <tbody>
-              {VENUES.map((v) => (
+              {VENUES.filter((v) => matches(term, v, ...db.bookings.filter((b) => b.venue === v && b.date === date).map((b) => `${b.purpose} ${userName(db, b.bookedBy)}`))).map((v) => (
                 <tr key={v}>
                   <td><strong>{v}</strong></td>
                   {SLOTS.map((s) => {

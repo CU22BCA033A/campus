@@ -9,7 +9,7 @@ const d = (offsetDays: number, hour = 10) => {
 }
 const iso = (offsetDays: number) => new Date(now + offsetDays * DAY).toISOString().slice(0, 10)
 
-type ErpPart = Pick<DB, 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
+type ErpPart = Pick<DB, 'services' | 'appointments' | 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
 
 /** Extra users the ERP modules need (parent, librarian-style staff etc.). */
 export const parentUser: User = {
@@ -38,9 +38,11 @@ export const officeStaff: User[] = [
   officer('a3', 'Anita Krishnan (Finance Officer)', 'finance@campus.edu', 'finance', 85000, '#1f8a4c'),
   officer('a4', 'Mahesh Gowda (Chief Warden)', 'warden@campus.edu', 'hostel', 55000, '#b7791f'),
   officer('a5', 'Shalini Rao (HR Manager)', 'hr@campus.edu', 'hr', 80000, '#be185d'),
-  officer('a6', 'Dr. Vinod Kumar (Controller of Exams)', 'exams@campus.edu', 'exam', 110000, '#2563a8'),
+  officer('a6', 'Dr. Vinod Kumar (Registrar of Evaluation)', 'exams@campus.edu', 'exam', 110000, '#2563a8'),
   officer('a7', 'Geetha Murthy (Librarian)', 'library@campus.edu', 'library', 60000, '#0f766e'),
   officer('a8', 'Arjun Nair (Placement Officer)', 'placement@campus.edu', 'placement', 75000, '#6b3fa0'),
+  officer('a9', 'Dr. Farah Siddiqui (Dean, Student Affairs)', 'studentaffairs@campus.edu', 'studentAffairs', 98000, '#0f766e'),
+  officer('a10', 'Kiran Desai (Admissions Officer)', 'admissions@campus.edu', 'admissions', 70000, '#2563a8'),
 ]
 
 export function createErpSeed(): ErpPart {
@@ -137,6 +139,19 @@ export function createErpSeed(): ErpPart {
       { id: 'al4', name: 'Fatima Sheikh', batch: 2021, program: 'B.Sc Data Science', company: 'Amazon', role: 'Data Scientist', city: 'Hyderabad', mentor: true, email: 'fatima.s@alumni.campus.edu', mentees: [], donations: 25000 },
     ],
     refunds: [],
+    services: [
+      { id: 'sv1', title: 'Counselling Centre appointment', description: 'Confidential one-to-one session with a qualified counsellor for stress, anxiety, relationships or anything on your mind.', office: 'studentAffairs', category: 'Wellbeing', mode: 'In person or online', location: 'Wellness Centre, Block C', durationMin: 45, slots: [1, 2, 3, 4, 5].flatMap((day) => [{ day, start: '10:00' }, { day, start: '14:00' }, { day, start: '16:00' }]), maxPerSlot: 1, confidential: true, active: true, createdBy: 'a9' },
+      { id: 'sv2', title: 'Meet the Vice-Chancellor', description: 'Open-house slot for student representatives and individual students to share ideas or concerns with the Vice-Chancellor.', office: 'registrar', category: 'Leadership', mode: 'In person', location: 'VC Office, Admin Block', durationMin: 15, slots: [{ day: 3, start: '15:00' }, { day: 3, start: '15:15' }, { day: 3, start: '15:30' }], maxPerSlot: 1, confidential: false, active: true, createdBy: 'a2' },
+      { id: 'sv3', title: 'Registrar appointment', description: 'Certificates, transfers, name corrections, migration and other record-related matters.', office: 'registrar', category: 'Administrative', mode: 'In person', location: 'Registrar Office, Admin Block', durationMin: 20, slots: [1, 2, 4].flatMap((day) => [{ day, start: '11:00' }, { day, start: '11:30' }]), maxPerSlot: 2, confidential: false, active: true, createdBy: 'a2' },
+      { id: 'sv4', title: 'Results & re-evaluation help desk', description: 'Questions about marks, grade sheets, backlogs or re-evaluation.', office: 'exam', category: 'Academic', mode: 'In person or online', location: 'Evaluation Section, Exam Block', durationMin: 15, slots: [2, 4].flatMap((day) => [{ day, start: '12:00' }, { day, start: '12:15' }]), maxPerSlot: 1, confidential: false, active: true, createdBy: 'a6' },
+      { id: 'sv5', title: 'Fee & scholarship counselling', description: 'Instalment plans, scholarships, education loans and refunds.', office: 'finance', category: 'Financial', mode: 'In person', location: 'Accounts Section, Admin Block', durationMin: 20, slots: [1, 3, 5].flatMap((day) => [{ day, start: '14:30' }]), maxPerSlot: 2, confidential: false, active: true, createdBy: 'a3' },
+      { id: 'sv6', title: 'Career counselling', description: 'Resume review, mock interview and career path guidance from the Placement Cell.', office: 'placement', category: 'Career', mode: 'In person or online', location: 'Placement Cell, Block B', durationMin: 30, slots: [2, 5].flatMap((day) => [{ day, start: '15:00' }, { day, start: '15:30' }]), maxPerSlot: 1, confidential: false, active: true, createdBy: 'a8' },
+      { id: 'sv7', title: 'HOD office hours – Computer Applications', description: 'Meet the Head of Department about electives, projects, internships or academic concerns.', ownerFacultyId: 'f2', category: 'Academic', mode: 'In person', location: 'CA Department, LH Block 2nd floor', durationMin: 15, slots: [{ day: 2, start: '16:00' }, { day: 4, start: '16:00' }], maxPerSlot: 2, confidential: false, active: true, createdBy: 'f2' },
+    ],
+    appointments: [
+      { id: 'apt1', serviceId: 'sv6', studentId: 's1', at: d(2, 15), reason: 'Resume review before the Infosys drive', status: 'CONFIRMED', note: 'Bring a printed copy of your resume.', createdAt: d(-1) },
+      { id: 'apt2', serviceId: 'sv3', studentId: 's2', at: d(1, 11), reason: 'Name correction on 12th certificate in records', status: 'REQUESTED', createdAt: d(-0.3) },
+    ],
     audit: [
       { id: 'au0', at: d(-1), actorId: 'a2', action: 'ADMISSION_VERIFY', detail: 'Verified documents for Harsh Vardhan' },
     ],

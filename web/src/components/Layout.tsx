@@ -3,11 +3,12 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, BookOpen, Bus, CalendarDays, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, GraduationCap,
   Home, LogOut, Megaphone, Menu, MessageSquare, PartyPopper, Search, Star, Users, Vote, Building2, UserCog, BarChart3, RotateCcw,
-  ScrollText, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
+  ScrollText, School, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
 } from 'lucide-react'
 import { logout, resetDemoData, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar } from './ui'
 import { can, canAccess, personaLabel } from '../access'
+import { classLabel } from '../classes'
 import { timeAgo } from '../lib'
 
 interface NavItem { to: string; label: string; icon: React.ElementType }
@@ -19,6 +20,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     { to: '/notices', label: 'Notice Board', icon: Megaphone },
   ] },
   { section: 'Academics', items: [
+    { to: '/classes', label: 'Classes & Promotion', icon: School },
     { to: '/courses', label: 'Courses', icon: BookOpen },
     { to: '/assignments', label: 'Assignments', icon: ClipboardList },
     { to: '/quizzes', label: 'Quizzes & Tests', icon: FileQuestion },
@@ -89,7 +91,8 @@ export default function Layout() {
     db.notices.forEach((n) => n.title.toLowerCase().includes(s) && items.push({ label: n.title, sub: 'Notice', to: '/notices' }))
     db.events.forEach((e) => e.title.toLowerCase().includes(s) && items.push({ label: e.title, sub: 'Event', to: '/events' }))
     if (canAccess(user, '/clubs')) db.clubs.forEach((c) => c.name.toLowerCase().includes(s) && items.push({ label: c.name, sub: 'Club', to: '/clubs' }))
-    if (can(user, 'manageStudents') || can(user, 'manageStaff')) db.users.forEach((u) => (u.name + (u.rollNo ?? '')).toLowerCase().includes(s) && items.push({ label: u.name, sub: `${u.role} · ${u.rollNo ?? u.email}`, to: '/admin/users' }))
+    if (can(user, 'viewPeople')) db.users.forEach((u) => u.role !== 'admin' && (u.name + ' ' + (u.rollNo ?? '') + ' ' + u.email).toLowerCase().includes(s) && items.push({ label: u.name, sub: `${u.role === 'student' ? classLabel(db.classes.find((c) => c.id === u.classId)) : u.role} · ${u.rollNo ?? u.email}`, to: `/people/${u.id}` }))
+    if (canAccess(user, '/classes')) db.classes.forEach((c) => classLabel(c).toLowerCase().includes(s) && items.push({ label: classLabel(c), sub: 'Class', to: '/classes' }))
     return items.slice(0, 8)
   }, [q, db, user])
 
@@ -129,7 +132,7 @@ export default function Layout() {
           <button className="icon-btn menu-btn" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
           <div className="search" style={{ position: 'relative' }}>
             <Search size={16} className="muted" />
-            <input placeholder={user.role === "admin" && !canAccess(user, "/courses") ? "Search notices, events, people…" : "Search courses, notices, events…"} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+            <input placeholder={user.role === 'student' || user.role === 'parent' ? 'Search courses, notices, events…' : 'Search students, teachers, courses, notices…'} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
             {results.length > 0 && (
               <div className="dropdown" style={{ left: 0, right: 'auto', width: '100%' }}>
                 {results.map((r, i) => (

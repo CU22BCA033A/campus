@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { CalendarPlus, MapPin, Megaphone, Pin, Plus, Trash2, Users, Vote } from 'lucide-react'
+import { CalendarPlus, MapPin, Megaphone, Pencil, Pin, Plus, Trash2, Users, Vote } from 'lucide-react'
+import { audit } from '../data/store'
 import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Progress, Tabs } from '../components/ui'
-import { fmtDateTime, timeAgo, userName } from '../lib'
+import { fmtDateTime, matches, timeAgo, userName } from '../lib'
 import { can } from '../access'
-import type { Notice } from '../data/types'
+import type { Club, Notice } from '../data/types'
 
 /* ---------------- Notice board ---------------- */
 export function Notices() {
   const db = useDB()
   const user = useCurrentUser()!
   const [cat, setCat] = useState<string>('All')
+  const [term, setTerm] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Pick<Notice, 'title' | 'body' | 'category' | 'audience' | 'pinned'>>({ title: '', body: '', category: 'General', audience: 'all', pinned: false })
   const canPost = can(user, 'postNotices')
   const cats = ['All', 'Academic', 'Exam', 'Event', 'Placement', 'General']
   const list = db.notices
+    .filter((n) => matches(term, n.title, n.body, n.category, userName(db, n.postedBy)))
     .filter((n) => (n.audience === 'all' || n.audience === user.role || user.role === 'admin') && (cat === 'All' || n.category === cat))
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt - a.createdAt)
 
@@ -29,7 +32,7 @@ export function Notices() {
 
   return (
     <>
-      <PageHeader title="Notice board" subtitle="Official announcements from the university" actions={canPost && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Post notice</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Notice board" subtitle="Official announcements from the university" actions={canPost && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Post notice</button>} />
       <div className="row gap wrap">{cats.map((c) => <button key={c} className={`chip ${cat === c ? 'active' : ''}`} onClick={() => setCat(c)}>{c}</button>)}</div>
       <div className="stack">
         {list.length === 0 && <Card><Empty icon={<Megaphone />} text="No notices in this category." /></Card>}
@@ -71,6 +74,7 @@ export function Events() {
   const db = useDB()
   const user = useCurrentUser()!
   const [tab, setTab] = useState<'upcoming' | 'mine' | 'past'>('upcoming')
+  const [term, setTerm] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ title: '', description: '', venue: '', when: '', capacity: 100 })
   const now = Date.now()
@@ -89,11 +93,11 @@ export function Events() {
 
   return (
     <>
-      <PageHeader title="Events" subtitle="What's happening on campus" actions={can(user, 'createEvents') && <button className="btn" onClick={() => setCreating(true)}><CalendarPlus size={14} /> Create event</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Events" subtitle="What's happening on campus" actions={can(user, 'createEvents') && <button className="btn" onClick={() => setCreating(true)}><CalendarPlus size={14} /> Create event</button>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'upcoming', label: 'Upcoming', count: lists.upcoming.length }, { id: 'mine', label: 'My RSVPs', count: lists.mine.length }, { id: 'past', label: 'Past' }]} />
       {lists[tab].length === 0 && <Card><Empty text="No events here." /></Card>}
       <div className="grid grid-3">
-        {lists[tab].sort((a, b) => a.startsAt - b.startsAt).map((e) => {
+        {lists[tab].filter((e) => matches(term, e.title, e.description, e.venue, db.clubs.find((c) => c.id === e.clubId)?.name)).sort((a, b) => a.startsAt - b.startsAt).map((e) => {
           const going = e.rsvps.includes(user.id)
           const full = e.rsvps.length >= e.capacity
           return (
@@ -134,25 +138,76 @@ export function Events() {
 export function Clubs() {
   const db = useDB()
   const user = useCurrentUser()!
+  const manage = can(user, 'manageClubs')
+  const [q, setQ] = useState('')
+  const [cat, setCat] = useState('All')
+  const [editing, setEditing] = useState<Partial<Club> | null>(null)
+  const [members, setMembers] = useState<Club | null>(null)
+  const canEdit = (c: Club) => manage || c.facultyAdvisorId === user.id
   const toggle = (id: string) => update((d) => { const c = d.clubs.find((x) => x.id === id)!; c.members = c.members.includes(user.id) ? c.members.filter((x) => x !== user.id) : [...c.members, user.id] })
+  const cats = ['All', ...new Set(db.clubs.map((c) => c.category ?? 'General'))]
+  const list = db.clubs.filter((c) => (manage || c.active !== false) && (cat === 'All' || (c.category ?? 'General') === cat) && matches(q, c.name, c.description, c.category, userName(db, c.facultyAdvisorId), c.meeting))
+  const faculty = db.users.filter((u) => u.role === 'faculty' && u.status === 'ACTIVE')
+
+  const save = () => {
+    const e = editing!
+    if (!e.name?.trim() || !e.facultyAdvisorId) return alert('Enter a name and choose a faculty advisor.')
+    update((d) => {
+      if (e.id) Object.assign(d.clubs.find((c) => c.id === e.id)!, e)
+      else d.clubs.push({ id: uid('cl'), name: e.name!, description: e.description ?? '', members: [], facultyAdvisorId: e.facultyAdvisorId!, category: e.category ?? 'General', meeting: e.meeting, active: true, joinOpen: e.joinOpen ?? true })
+    })
+    if (!e.id) notify(db.users.filter((u) => u.role === 'student').map((u) => u.id), `New club: ${e.name}. Join from Clubs & Chapters.`, '/clubs')
+    audit(user.id, e.id ? 'CLUB_EDIT' : 'CLUB_CREATE', e.name!)
+    setEditing(null)
+  }
+
   return (
     <>
-      <PageHeader title="Clubs & Chapters" subtitle="Find your community on campus" />
+      <PageHeader title="Clubs & Chapters" subtitle={manage ? 'Create and manage student clubs, advisors and memberships' : 'Find your community on campus'}
+        search={{ value: q, onChange: setQ, placeholder: 'Search clubs, advisors…' }}
+        actions={manage && <button className="btn" onClick={() => setEditing({ category: 'Technical', joinOpen: true, facultyAdvisorId: faculty[0]?.id })}><Plus size={14} /> New club</button>} />
+      <div className="row gap wrap">{cats.map((c) => <button key={c} className={`chip ${cat === c ? 'active' : ''}`} onClick={() => setCat(c)}>{c}</button>)}</div>
+      {list.length === 0 && <Card><Empty text="No clubs match." /></Card>}
       <div className="grid grid-2">
-        {db.clubs.map((c) => {
+        {list.map((c) => {
           const member = c.members.includes(user.id)
           return (
-            <Card key={c.id} title={c.name} action={member && <Badge tone="success">Member</Badge>}>
+            <Card key={c.id} title={c.name} action={<div className="row gap">{c.active === false && <Badge tone="neutral">Archived</Badge>}<Badge tone="brand">{c.category ?? 'General'}</Badge>{member && <Badge tone="success">Member</Badge>}</div>}>
               <div className="stack">
                 <p>{c.description}</p>
                 <div className="small muted row gap"><Users size={14} /> {c.members.length} members · Advisor: {userName(db, c.facultyAdvisorId)}</div>
+                {c.meeting && <div className="small muted">Meets: {c.meeting}</div>}
                 <div className="small muted">{db.events.filter((e) => e.clubId === c.id && e.startsAt > Date.now()).length} upcoming events</div>
-                {user.role === 'student' && <button className={`btn ${member ? 'btn-outline' : ''}`} onClick={() => toggle(c.id)}>{member ? 'Leave club' : 'Join club'}</button>}
+                <div className="row gap wrap">
+                  {user.role === 'student' && c.active !== false && (member ? <button className="btn btn-outline" onClick={() => toggle(c.id)}>Leave club</button> : c.joinOpen === false ? <Badge>Membership closed</Badge> : <button className="btn" onClick={() => toggle(c.id)}>Join club</button>)}
+                  {canEdit(c) && <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...c })}><Pencil size={12} /> Edit</button>}
+                  {canEdit(c) && <button className="btn btn-ghost btn-sm" onClick={() => setMembers(c)}>Members</button>}
+                  {manage && <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.clubs.find((y) => y.id === c.id)!; x.active = x.active === false }); audit(user.id, 'CLUB_ARCHIVE', c.name) }}>{c.active === false ? 'Restore' : 'Archive'}</button>}
+                </div>
               </div>
             </Card>
           )
         })}
       </div>
+      {editing && (
+        <Modal title={editing.id ? `Edit ${editing.name}` : 'New club'} onClose={() => setEditing(null)} footer={<><button className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button><button className="btn" onClick={save}>Save</button></>}>
+          <Field label="Club name"><input className="input" value={editing.name ?? ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
+          <Field label="Description"><textarea className="textarea" value={editing.description ?? ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></Field>
+          <div className="grid grid-2">
+            <Field label="Category"><select className="select" value={editing.category ?? 'General'} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>{['Technical', 'Cultural', 'Sports', 'Social Service', 'Entrepreneurship', 'Literary', 'General'].map((x) => <option key={x}>{x}</option>)}</select></Field>
+            <Field label="Faculty advisor"><select className="select" disabled={!manage} value={editing.facultyAdvisorId ?? ''} onChange={(e) => setEditing({ ...editing, facultyAdvisorId: e.target.value })}>{faculty.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></Field>
+          </div>
+          <Field label="Meeting schedule"><input className="input" value={editing.meeting ?? ''} placeholder="e.g. Fridays 4 PM, Innovation Centre" onChange={(e) => setEditing({ ...editing, meeting: e.target.value })} /></Field>
+          <label className="row gap"><input type="checkbox" checked={editing.joinOpen !== false} onChange={(e) => setEditing({ ...editing, joinOpen: e.target.checked })} /> Students can join</label>
+        </Modal>
+      )}
+      {members && (
+        <Modal title={`${members.name}: members`} onClose={() => setMembers(null)}>
+          {db.clubs.find((c) => c.id === members.id)!.members.length === 0 ? <Empty text="No members yet." /> : db.clubs.find((c) => c.id === members.id)!.members.map((m) => (
+            <div key={m} className="row between"><span>{userName(db, m)} <span className="muted small">{db.users.find((u) => u.id === m)?.rollNo}</span></span><button className="btn btn-ghost btn-sm" onClick={() => update((d) => { const c = d.clubs.find((x) => x.id === members.id)!; c.members = c.members.filter((x) => x !== m) })}>Remove</button></div>
+          ))}
+        </Modal>
+      )}
     </>
   )
 }
@@ -164,6 +219,7 @@ export function Polls() {
   const [creating, setCreating] = useState(false)
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState(['', ''])
+  const [term, setTerm] = useState('')
   const vote = (pid: string, i: number) => update((d) => { d.polls.find((p) => p.id === pid)!.votes[user.id] = i })
   const create = () => {
     const o = opts.filter((x) => x.trim())
@@ -173,9 +229,9 @@ export function Polls() {
   }
   return (
     <>
-      <PageHeader title="Polls & Surveys" subtitle="Quick opinions from the campus community" actions={can(user, 'createPolls') && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New poll</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Polls & Surveys" subtitle="Quick opinions from the campus community" actions={can(user, 'createPolls') && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New poll</button>} />
       <div className="grid grid-2">
-        {db.polls.map((p) => {
+        {db.polls.filter((p) => matches(term, p.question, ...p.options, userName(db, p.createdBy))).map((p) => {
           const total = Object.keys(p.votes).length
           const mine = p.votes[user.id]
           const closed = p.closesAt < Date.now()

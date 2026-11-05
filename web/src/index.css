@@ -203,3 +203,6 @@ tbody tr:hover { background: var(--surface-2); }
 /* Tables placed directly in a card or modal scroll inside it rather than widening the page. */
 .card, .modal-body { overflow-x: auto; }
 .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.page-search { width: 260px; max-width: 100%; flex: 0 1 260px; }
+@media (max-width: 560px) { .page-search { flex: 1 1 100%; width: 100%; } .page-header > div:last-child { width: 100%; } }

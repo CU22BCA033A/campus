@@ -32,7 +32,9 @@ npm run build      # production build in web/dist
 | Finance & accounts | `finance@campus.edu` | `finance123` |
 | Hostel warden | `warden@campus.edu` | `warden123` |
 | Human resources | `hr@campus.edu` | `hr123` |
-| Controller of examinations | `exams@campus.edu` | `exams123` |
+| Registrar of Evaluation | `exams@campus.edu` | `exams123` |
+| Admission Department | `admissions@campus.edu` | `admissions123` |
+| Office of Student Affairs | `studentaffairs@campus.edu` | `studentaffairs123` |
 | Library | `library@campus.edu` | `library123` |
 | Placement cell | `placement@campus.edu` | `placement123` |
 | Parent (two wards) | `parent@campus.edu` | `parent123` |
@@ -50,11 +52,13 @@ staff, their **office**. All of it is defined in one place: `web/src/access.ts`
 
 | Office | Sees | Can act on |
 |--------|------|-----------|
-| Registrar | Admissions, student & parent records, courses, timetable, feedback, venues, reports | admissions pipeline, Registrar-level purchase approvals, grievances & certificates |
+| Registrar | Admissions, student & parent records, classes (view), courses, timetable, feedback, venues, reports | edit student profiles, admissions, Registrar-level purchase approvals, certificates, VC/Registrar appointments |
+| Admission Department | Admissions, student profiles, classes (view) | admissions pipeline, create & edit student profiles |
+| Registrar of Evaluation | Classes & promotion, courses, examinations, attendance report, gradebook, timetable | create classes, create courses per class & assign teachers, exams, seating, marks, publish results, promote/detain/graduate, edit student profiles (incl. CGPA/backlogs) |
+| Office of Student Affairs | Clubs, events, polls, discussions | create/edit/archive clubs and memberships, counselling appointments, student grievances |
 | Finance | Fee collection, procurement & assets, payroll, reports | refunds, scholarships, Finance-level approvals, purchase orders, receiving, assets, payroll run |
 | Hostel warden | Hostel & mess, gate passes | room allocation, leave approvals (after parent), mess counter, maintenance tickets |
 | HR | Leave & payroll, staff records | staff leave approvals, payroll run, staff accounts |
-| Exams | Examinations, attendance report (read-only), gradebook, timetable | seating & invigilators, publishing results, re-evaluation |
 | Library | Library | issue desk, returns & fines, catalogue |
 | Placement cell | Placements, alumni | drives, shortlists, interviews, alumni records |
 | System administrator | everything + audit log | everything |
@@ -63,6 +67,24 @@ Every office also has Home (its own "needs your action" queue), notices, events,
 Center (tickets are routed to the office that handles each category) and its own leave and
 payslips. Notifications go to the responsible office, not to every admin.
 
+## Classes, courses and promotion
+
+Students belong to a **class** (programme + batch + section, currently in semester *n*). The
+Registrar of Evaluation creates each class's courses for the semester and assigns a teacher;
+the course roster follows the class automatically, so the teacher gets those students for
+attendance, assignments, quizzes and marks. When every course's end-semester result is
+published, **Promote** moves the class to the next semester: failed courses become backlogs,
+CGPA is updated, ticked students are detained in a repeat section, and a final-semester class
+graduates into the alumni network. Logic lives in `web/src/classes.ts`.
+
+## Help Center services
+
+Offices (and faculty, e.g. HOD office hours) publish bookable services with weekly slots:
+counselling centre, Meet the Vice-Chancellor, Registrar, results help desk, fee counselling,
+career counselling and more. Students book a slot; the owning office confirms (with a room or
+link), declines or completes it. Confidential services hide the student's name from
+notifications and the audit log.
+
 ## Modules
 
 | Area | Student | Faculty | Admin |
@@ -70,7 +92,7 @@ payslips. Notifications go to the responsible office, not to every admin.
 | Home dashboard | attendance %, pending work, open quizzes, fee due, today's classes | courses, students, submissions to grade, gate passes | users, inactive accounts, fee collection, events |
 | Timetable | weekly grid + export to Outlook/Google (.ics) | ✓ | ✓ |
 | Courses (LMS) | materials, schedule, discussion | + add materials, student list with attendance | all courses |
-| Assignments | submit (text/file), late flag, marks & feedback | create, grade, feedback | |
+| Assignments | submit text/link/file, resubmit until marked, view own submission, marks & feedback | create; per-student list (submitted / late / not submitted / marked); view answer & attachment; mark with feedback, Save & next | |
 | Quizzes & tests | timed quiz, auto-submit, instant score | create MCQ quizzes, results, publish/hide scores | |
 | Attendance | course-wise %, 75% rule, "classes you can miss", monthly calendar | mark by tapping students, edit, CSV report | |
 | Grades | internal marks, grade, projected SGPA | gradebook | |

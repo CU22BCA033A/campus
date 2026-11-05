@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 import { Clock, FileQuestion, Plus, Trash2 } from 'lucide-react'
 import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader } from '../components/ui'
-import { courseName, coursesFor, fmtDateTime, userName } from '../lib'
+import { courseName, coursesFor, fmtDateTime, userName, matches } from '../lib'
 import type { Quiz, QuizQuestion } from '../data/types'
 
 export default function Quizzes() {
   const db = useDB()
   const user = useCurrentUser()!
   const courses = coursesFor(db, user)
-  const quizzes = db.quizzes.filter((q) => courses.some((c) => c.id === q.courseId))
+  const [term, setTerm] = useState('')
+  const quizzes = db.quizzes.filter((q) => courses.some((c) => c.id === q.courseId) && matches(term, q.title, courseName(db, q.courseId)))
   const [taking, setTaking] = useState<Quiz | null>(null)
   const [creating, setCreating] = useState(false)
   const [results, setResults] = useState<Quiz | null>(null)
@@ -18,7 +19,7 @@ export default function Quizzes() {
 
   return (
     <>
-      <PageHeader title="Quizzes & Tests" subtitle="Timed online assessments" actions={user.role === 'faculty' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New quiz</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search quizzes or courses…' }} title="Quizzes & Tests" subtitle="Timed online assessments" actions={user.role === 'faculty' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New quiz</button>} />
       {quizzes.length === 0 && <Card><Empty icon={<FileQuestion />} text="No quizzes yet." /></Card>}
       <div className="grid grid-2">
         {quizzes.map((q) => {

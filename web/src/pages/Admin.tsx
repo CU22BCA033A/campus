@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Download, Plus, Search } from 'lucide-react'
+import { Download, Pencil, Plus, Search } from 'lucide-react'
 import { audit, switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
-import { attendanceStats, feeOutstanding, inr } from '../lib'
+import { attendanceStats, feeOutstanding, inr, matches } from '../lib'
+import { classLabel, resyncRosters } from '../classes'
+import EditUser, { canEditProfile } from '../components/EditUser'
 import type { Office, Role, User } from '../data/types'
 import { can, OFFICES, persona, personaLabel } from '../access'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 export function AdminUsers() {
   const db = useDB()
@@ -13,48 +15,64 @@ export function AdminUsers() {
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [role, setRole] = useState<'all' | Role>('all')
+  const [classF, setClassF] = useState('all')
   const [creating, setCreating] = useState(false)
-  const [draft, setDraft] = useState({ name: '', email: '', role: (can(me, 'manageStudents') ? 'student' : 'faculty') as Role, office: 'registrar' as Office, department: 'Computer Applications', rollNo: '' })
-  // Registrar manages students and parents; HR manages staff; the system administrator manages everyone.
-  const manageable = (r: Role) => (r === 'student' || r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
-  const roles = (['student', 'parent', 'faculty', 'admin'] as Role[]).filter(manageable)
-  const users = db.users.filter((u) => manageable(u.role) && (role === 'all' || u.role === role) && (u.name + u.email + (u.rollNo ?? '')).toLowerCase().includes(q.toLowerCase()))
+  const [editing, setEditing] = useState<User | null>(null)
+  const [draft, setDraft] = useState({ name: '', email: '', role: (can(me, 'editStudentProfiles') ? 'student' : 'faculty') as Role, office: 'registrar' as Office, department: 'Computer Applications', rollNo: '', classId: db.classes[0]?.id ?? '' })
+  // Student/parent records: Registrar, Admission Department, Registrar of Evaluation. Staff: HR. Everyone: system administrator.
+  const visibleRole = (r: Role) => (r === 'student' ? can(me, 'editStudentProfiles') : r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
+  const canCreate = (r: Role) => (r === 'student' || r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
+  const roles = (['student', 'parent', 'faculty', 'admin'] as Role[]).filter(visibleRole)
+  const users = db.users
+    .filter((u) => visibleRole(u.role) && (role === 'all' || u.role === role) && (classF === 'all' || u.classId === classF))
+    .filter((u) => matches(q, u.name, u.email, u.rollNo, u.phone, u.department, classLabel(db.classes.find((c) => c.id === u.classId))))
+  const statusAllowed = (u: User) => canCreate(u.role) && u.id !== me.id
 
   const setStatus = (u: User, status: User['status']) => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.status = status; x.credentialsMismatchCount = 0; x.lockedAtTime = undefined }); audit(me.id, `USER_${status}`, `${u.name} → ${status}`) }
   const create = () => {
     if (!draft.name || !draft.email) return
+    const cls = db.classes.find((c) => c.id === draft.classId)
     update((d) => {
       const id = uid('u')
-      d.users.push({ id, name: draft.name, email: draft.email, password: 'welcome123', role: draft.role, office: draft.role === 'admin' ? draft.office : undefined, status: 'ACTIVE', department: draft.department, rollNo: draft.rollNo || undefined, program: draft.role === 'student' ? 'BCA' : undefined, semester: draft.role === 'student' ? 5 : undefined, section: draft.role === 'student' ? 'A' : undefined, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#2563a8' })
-      if (draft.role === 'student') d.courses.forEach((c) => c.studentIds.push(id))
+      d.users.push({ id, name: draft.name, email: draft.email, password: 'welcome123', role: draft.role, office: draft.role === 'admin' ? draft.office : undefined, status: 'ACTIVE', department: draft.department, rollNo: draft.rollNo || undefined, classId: draft.role === 'student' ? cls?.id : undefined, firstLogin: true, credentialsMismatchCount: 0, avatarColor: '#2563a8', cgpa: draft.role === 'student' ? 0 : undefined, backlogs: draft.role === 'student' ? 0 : undefined })
+      resyncRosters(d)
     })
+    audit(me.id, 'USER_CREATE', `${draft.name} (${draft.role})`)
     setCreating(false)
   }
 
   return (
     <>
-      <PageHeader title="User management" subtitle={persona(me) === 'super' ? 'All accounts' : persona(me) === 'hr' ? 'Staff accounts' : 'Student and parent accounts'} actions={<button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Add user</button>} />
+      <PageHeader title="User management" subtitle={persona(me) === 'super' ? 'All accounts' : persona(me) === 'hr' ? 'Staff accounts' : 'Student records'} search={{ value: q, onChange: setQ, placeholder: 'Search name, roll no., email, class…' }}
+        actions={roles.some(canCreate) && <button className="btn" onClick={() => { setDraft({ ...draft, role: roles.find(canCreate)! }); setCreating(true) }}><Plus size={14} /> Add user</button>} />
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
-          <div className="search" style={{ maxWidth: 320 }}><Search size={16} className="muted" /><input placeholder="Search by name, email or roll no." value={q} onChange={(e) => setQ(e.target.value)} /></div>
           {(['all', ...roles] as const).map((r) => <button key={r} className={`chip ${role === r ? 'active' : ''}`} onClick={() => setRole(r)} style={{ textTransform: 'capitalize' }}>{r === 'admin' ? 'office staff' : r}</button>)}
+          {roles.includes('student') && (
+            <select className="select" style={{ width: 'auto' }} value={classF} onChange={(e) => setClassF(e.target.value)} aria-label="Filter by class">
+              <option value="all">All classes</option>
+              {db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
+            </select>
+          )}
+          <span className="small muted">{users.length} result(s)</span>
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>User</th><th>Role</th><th>ID / Dept.</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>User</th><th>Role</th><th>ID / class</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td><div className="row gap"><Avatar name={u.name} color={u.avatarColor} size={30} /><div><div style={{ fontWeight: 600 }}>{u.name}</div><div className="small muted">{u.email}</div></div></div></td>
+                  <td><div className="row gap"><Avatar name={u.name} color={u.avatarColor} size={30} /><div><Link to={`/people/${u.id}`} style={{ fontWeight: 600 }}>{u.name}</Link><div className="small muted">{u.email}</div></div></div></td>
                   <td><Badge tone={u.role === 'admin' ? 'danger' : u.role === 'faculty' ? 'brand' : u.role === 'parent' ? 'accent' : 'info'}>{personaLabel(u)}</Badge></td>
-                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.role === 'parent' ? `Wards: ${(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ')}` : u.department}</div></td>
+                  <td>{u.rollNo ?? '—'}<div className="small muted">{u.role === 'parent' ? `Wards: ${(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ')}` : u.role === 'student' ? classLabel(db.classes.find((c) => c.id === u.classId)) : u.department}</div></td>
                   <td><Badge tone={u.status === 'ACTIVE' ? 'success' : u.status === 'LOCKED' ? 'warning' : 'danger'}>{u.status}</Badge>{u.firstLogin && <> <Badge tone="accent">First login</Badge></>}</td>
                   <td>
                     <div className="row gap">
-                      {u.status === 'ACTIVE' && u.id !== me.id && <button className="btn btn-outline btn-sm" onClick={() => setStatus(u, 'DEACTIVATED')}>Deactivate</button>}
-                      {u.status === 'DEACTIVATED' && <button className="btn btn-success btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Activate</button>}
-                      {u.status === 'LOCKED' && <button className="btn btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Unlock</button>}
-                      <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.password = 'welcome123'; x.firstLogin = true }); alert(`Password reset. ${u.name} must set a new password at next login (temporary: welcome123).`) }}>Reset password</button>
+                      {canEditProfile(me, u) && <button className="btn btn-outline btn-sm" onClick={() => setEditing(u)}><Pencil size={12} /> Edit</button>}
+                      {statusAllowed(u) && u.status === 'ACTIVE' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(u, 'DEACTIVATED')}>Deactivate</button>}
+                      {statusAllowed(u) && u.status === 'DEACTIVATED' && <button className="btn btn-success btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Activate</button>}
+                      {statusAllowed(u) && u.status === 'LOCKED' && <button className="btn btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Unlock</button>}
+                      {statusAllowed(u) && <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.password = 'welcome123'; x.firstLogin = true }); audit(me.id, 'PASSWORD_RESET', u.name); alert(`Password reset. ${u.name} must set a new password at next login (temporary: welcome123).`) }}>Reset password</button>}
                       {persona(me) === 'super' && u.id !== me.id && u.status === 'ACTIVE' && !u.firstLogin && <button className="btn btn-ghost btn-sm" title="View the portal as this user" onClick={() => { switchUser(u.id); navigate('/home') }}>View as</button>}
                     </div>
                   </td>
@@ -64,16 +82,19 @@ export function AdminUsers() {
           </table>
         </div>
       </Card>
+      {editing && <EditUser user={editing} onClose={() => setEditing(null)} />}
       {creating && (
         <Modal title="Add user" onClose={() => setCreating(false)} footer={<><button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button><button className="btn" onClick={create}>Create account</button></>}>
           <Field label="Full name"><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
           <Field label="Email"><input className="input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></Field>
           <div className="grid grid-2">
-            <Field label="Role"><select className="select" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}>{roles.map((r) => <option key={r} value={r}>{r === 'admin' ? 'Office staff' : r[0].toUpperCase() + r.slice(1)}</option>)}</select></Field>
-          {draft.role === 'admin' && <Field label="Office"><select className="select" value={draft.office} onChange={(e) => setDraft({ ...draft, office: e.target.value as Office })}>{(Object.keys(OFFICES) as Office[]).filter((o) => o !== 'super' || persona(me) === 'super').map((o) => <option key={o} value={o}>{OFFICES[o].label}</option>)}</select></Field>}
-            <Field label="Roll no. / Employee ID"><input className="input" value={draft.rollNo} onChange={(e) => setDraft({ ...draft, rollNo: e.target.value })} /></Field>
+            <Field label="Role"><select className="select" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}>{roles.filter(canCreate).map((r) => <option key={r} value={r}>{r === 'admin' ? 'Office staff' : r[0].toUpperCase() + r.slice(1)}</option>)}</select></Field>
+            {draft.role === 'admin' && <Field label="Office"><select className="select" value={draft.office} onChange={(e) => setDraft({ ...draft, office: e.target.value as Office })}>{(Object.keys(OFFICES) as Office[]).filter((o) => o !== 'super' || persona(me) === 'super').map((o) => <option key={o} value={o}>{OFFICES[o].label}</option>)}</select></Field>}
+            <Field label={draft.role === 'student' ? 'Roll number' : 'Employee ID'}><input className="input" value={draft.rollNo} onChange={(e) => setDraft({ ...draft, rollNo: e.target.value })} /></Field>
           </div>
-          <Field label="Department"><input className="input" value={draft.department} onChange={(e) => setDraft({ ...draft, department: e.target.value })} /></Field>
+          {draft.role === 'student'
+            ? <Field label="Class"><select className="select" value={draft.classId} onChange={(e) => setDraft({ ...draft, classId: e.target.value })}>{db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}</select></Field>
+            : <Field label="Department"><input className="input" value={draft.department} onChange={(e) => setDraft({ ...draft, department: e.target.value })} /></Field>}
           <div className="small muted">The temporary password is <code>welcome123</code>. The user must change it at first login.</div>
         </Modal>
       )}

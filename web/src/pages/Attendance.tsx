@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Check, Download } from 'lucide-react'
 import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, PageHeader, Progress } from '../components/ui'
-import { attendanceStats, coursesFor, fmtDate } from '../lib'
+import { attendanceStats, coursesFor, fmtDate, matches } from '../lib'
 
 export default function Attendance() {
   const user = useCurrentUser()!
@@ -15,16 +15,17 @@ function AttendanceReport() {
   const db = useDB()
   const [onlyShort, setOnlyShort] = useState(true)
   const [threshold, setThreshold] = useState(75)
+  const [term, setTerm] = useState('')
   const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
   const rows = students.map((s) => ({ s, overall: attendanceStats(db, s.id), per: db.courses.filter((c) => c.studentIds.includes(s.id)).map((c) => ({ c, a: attendanceStats(db, s.id, c.id) })) }))
-    .filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
+    .filter((r) => matches(term, r.s.name, r.s.rollNo, r.s.program, r.s.batch)).filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
   const exportCsv = () => {
     const lines = [['Roll no', 'Name', 'Overall %', ...db.courses.map((c) => c.code)], ...rows.map((r) => [r.s.rollNo ?? '', r.s.name, String(r.overall.pct), ...db.courses.map((c) => String(r.per.find((x) => x.c.id === c.id)?.a.pct ?? ''))])]
     const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); el.download = 'attendance-shortage.csv'; el.click()
   }
   return (
     <>
-      <PageHeader title="Attendance report" subtitle="Read-only. Faculty mark attendance; students below the threshold are not eligible for exams." actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Attendance report" subtitle="Read-only. Faculty mark attendance; students below the threshold are not eligible for exams." actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
           <label className="row gap"><input type="checkbox" checked={onlyShort} onChange={(e) => setOnlyShort(e.target.checked)} /> Only students with a shortage</label>
@@ -117,6 +118,7 @@ function MarkAttendance() {
   const existing = db.attendance.find((a) => a.courseId === courseId && a.date === date)
   const [present, setPresent] = useState<Set<string>>(() => new Set(existing?.present ?? course?.studentIds ?? []))
   const [saved, setSaved] = useState(false)
+  const [term, setTerm] = useState('')
 
   const reload = (cid: string, dt: string) => {
     const c = db.courses.find((x) => x.id === cid)
@@ -155,7 +157,7 @@ function MarkAttendance() {
 
   return (
     <>
-      <PageHeader title="Mark attendance" subtitle="Select a course and date, then tap students to toggle" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Download report</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Mark attendance" subtitle="Select a course and date, then tap students to toggle" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Download report</button>} />
       <Card>
         <div className="row gap wrap">
           <select className="select" style={{ maxWidth: 320 }} value={courseId} onChange={(e) => { setCourseId(e.target.value); reload(e.target.value, date) }}>
@@ -168,7 +170,7 @@ function MarkAttendance() {
         </div>
       </Card>
       <div className="grid grid-4">
-        {course.studentIds.map((sid) => {
+        {course.studentIds.filter((sid) => matches(term, db.users.find((u) => u.id === sid)?.name, db.users.find((u) => u.id === sid)?.rollNo)).map((sid) => {
           const s = db.users.find((u) => u.id === sid)!
           const p = present.has(sid)
           return (
