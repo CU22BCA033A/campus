@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { BookOpen, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, Megaphone, Users } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
-import { Badge, Card, Empty, Progress, Stat } from '../components/ui'
+import { Badge, Card, Empty, Stat } from '../components/ui'
 import { attendanceStats, courseName, coursesFor, DAYS, fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
 import ParentHome from './Parent'
+import { cgpaOf, fmtCgpa } from '../academics'
 import OfficeHome from './OfficeHome'
 
 export default function Home() {
@@ -164,8 +165,11 @@ function UpcomingWork() {
         </div>
       )}
       <div style={{ marginTop: 14 }}>
-        <div className="row between small"><span className="muted">Semester progress</span><span>62%</span></div>
-        <Progress value={62} tone="brand" />
+        {(() => {
+          const next = db.exams.filter((e) => !e.resultsPublished && e.date >= new Date().toISOString().slice(0, 10) && courses.some((c) => c.id === e.courseId)).sort((a, b) => a.date.localeCompare(b.date))[0]
+          return next ? <div className="row between small"><span className="muted">Next exam</span><span><strong>{db.courses.find((c) => c.id === next.courseId)?.code}</strong> · {fmtDate(next.date)}</span></div> : null
+        })()}
+        <div className="row between small"><span className="muted">CGPA (published results)</span><Link to="/grades"><strong>{fmtCgpa(cgpaOf(db, user))}</strong></Link></div>
       </div>
     </Card>
   )

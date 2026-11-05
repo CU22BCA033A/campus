@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { audit, getDB, notify, update, useCurrentUser, useDB } from '../data/store'
 import { wardensFor } from '../hostels'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import type { Office, User } from '../data/types'
 import { can, OFFICES, persona } from '../access'
 import { classLabel, resyncRosters } from '../classes'
@@ -68,8 +69,20 @@ export default function EditUser({ user, onClose }: { user: User; onClose: () =>
             </Field>
           </div>
           <div className="grid grid-2">
-            <Field label="CGPA" hint={academicEditor ? undefined : 'Editable by the Registrar of Evaluation'}><input className="input" type="number" step="0.01" min={0} max={10} disabled={!academicEditor} value={f.cgpa ?? 0} onChange={(e) => set('cgpa', Number(e.target.value))} /></Field>
-            <Field label="Backlogs"><input className="input" type="number" min={0} disabled={!academicEditor} value={f.backlogs ?? 0} onChange={(e) => set('backlogs', Number(e.target.value))} /></Field>
+            <Field label="Current CGPA" hint="Calculated from published results and the prior record"><input className="input" disabled value={fmtCgpa(cgpaOf(db, { ...user, priorRecord: f.priorRecord }))} /></Field>
+            <Field label="Current backlogs" hint={(user.backlogCourses ?? []).length ? `From results: ${(user.backlogCourses ?? []).map((c) => db.courses.find((x) => x.id === c)?.code).join(', ')}` : 'From results and the prior record'}><input className="input" disabled value={backlogCountOf({ ...user, priorRecord: f.priorRecord })} /></Field>
+          </div>
+          <div className="field">
+            <span className="field-label">Prior record (semesters completed before the portal)</span>
+            <div className="grid grid-4">
+              <label className="field"><span className="field-label small">Semesters</span><input aria-label="Prior semesters" className="input" type="number" min={0} disabled={!academicEditor} value={f.priorRecord?.semesters ?? 0} onChange={(e) => set('priorRecord', { cgpa: 0, credits: 0, backlogs: 0, ...f.priorRecord, semesters: Number(e.target.value) })} /></label>
+              <label className="field"><span className="field-label small">CGPA</span><input aria-label="Prior cgpa" className="input" type="number" step="0.01" min={0} max={10} disabled={!academicEditor} value={f.priorRecord?.cgpa ?? 0} onChange={(e) => set('priorRecord', { credits: 0, backlogs: 0, semesters: 0, ...f.priorRecord, cgpa: Number(e.target.value) })} /></label>
+              <label className="field"><span className="field-label small">Credits</span><input aria-label="Prior credits" className="input" type="number" min={0} disabled={!academicEditor} value={f.priorRecord?.credits ?? 0} onChange={(e) => set('priorRecord', { cgpa: 0, backlogs: 0, semesters: 0, ...f.priorRecord, credits: Number(e.target.value) })} /></label>
+              <label className="field"><span className="field-label small">Backlogs</span><input aria-label="Prior backlogs" className="input" type="number" min={0} disabled={!academicEditor} value={f.priorRecord?.backlogs ?? 0} onChange={(e) => set('priorRecord', { cgpa: 0, credits: 0, semesters: 0, ...f.priorRecord, backlogs: Number(e.target.value) })} /></label>
+            </div>
+            <span className="field-hint">{academicEditor ? 'From the transcripts of earlier semesters. Portal results are added to it automatically.' : 'Maintained by the Registrar of Evaluation'}</span>
+          </div>
+          <div>
           </div>
         </>
       )}

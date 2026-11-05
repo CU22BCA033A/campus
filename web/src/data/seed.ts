@@ -103,11 +103,18 @@ const HOSTELLERS = new Set(['s1', 's2', 's3', 's4', 's5', 's7', 's8', 's15', 's1
 const withResidence = (u: User): User => u.role !== 'student' ? u : {
   ...u, gender: FEMALE.has(u.id) ? 'Female' : 'Male', residence: HOSTELLERS.has(u.id) ? 'HOSTEL' : 'DAY_SCHOLAR',
   backlogCourses: u.id === 's21' ? ['c8'] : [],
+  // Semesters completed before the portal; the portal's published results are added on top.
+  priorRecord: priorFor(u),
+}
+function priorFor(u: User): NonNullable<User['priorRecord']> {
+  const semesters = Math.max(0, (u.semester ?? 1) - 1)
+  const portalBacklogs = u.id === 's21' ? 1 : 0
+  return { semesters, credits: semesters * 20, cgpa: semesters ? u.cgpa ?? 0 : 0, backlogs: Math.max(0, (u.backlogs ?? 0) - portalBacklogs) }
 }
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 6,
+    version: 7,
     examSessions: [],
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [

@@ -1,4 +1,4 @@
-import type { DB, User } from './data/types'
+import type { DB, ResultSheet, User } from './data/types'
 
 /** Case-insensitive "does any field contain the query" (all words must match somewhere). */
 export function matches(q: string, ...fields: (string | number | undefined | null)[]) {
@@ -100,8 +100,13 @@ export function examEligibility(db: DB, studentId: string, exam: DB['exams'][num
     const due = studentDues(db, studentId)
     if (due > 0) reasons.push(`Fee dues of ₹${due.toLocaleString('en-IN')} pending`)
   }
-  const internal = internalPct(db, studentId, exam.courseId)
-  if (exam.minInternal > 0 && (internal ?? 0) < exam.minInternal) reasons.push(`Internal marks ${internal ?? 0}% below ${exam.minInternal}%`)
+  if (exam.minInternal > 0) {
+    // Internal % as set up on the course's result sheet; falls back to raw coursework.
+    const sh = db.resultSheets.find((s) => s.courseId === exam.courseId && s.term === 'Regular')
+    const row = sh && sheetInternal(db, sh, studentId)
+    const internal = row !== undefined && sh ? Math.round((row / sh.internalMax) * 100) : internalPct(db, studentId, exam.courseId) ?? 0
+    if (internal < exam.minInternal) reasons.push(`Internal marks ${internal}% below ${exam.minInternal}%`)
+  }
   return { eligible: reasons.length === 0, reasons, attendance: att }
 }
 
@@ -155,3 +160,8 @@ export function approvalChain(total: number) {
   if (total <= 100000) return ['HOD', 'Finance']
   return ['HOD', 'Finance', 'Registrar']
 }
+
+/** Internal mark from a result sheet without importing results.ts (avoids a module cycle). */
+let sheetInternalImpl: ((db: DB, sh: ResultSheet, studentId: string) => number | undefined) | null = null
+export const registerSheetInternal = (f: typeof sheetInternalImpl) => { sheetInternalImpl = f }
+const sheetInternal = (db: DB, sh: ResultSheet, studentId: string) => sheetInternalImpl?.(db, sh, studentId)

@@ -4,15 +4,17 @@ import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat } from '../components/ui'
 import { fmtDate, fmtDateTime, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
-import type { PlacementDrive, User } from '../data/types'
+import type { DB, PlacementDrive, User } from '../data/types'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 
 type AppStatus = PlacementDrive['applications'][number]['status']
 const tone = (s: AppStatus) => (s === 'SELECTED' ? 'success' : s === 'REJECTED' ? 'danger' : s === 'INTERVIEW' ? 'accent' : s === 'SHORTLISTED' ? 'info' : 'warning')
 
-export function driveEligibility(d: PlacementDrive, s: User) {
+export function driveEligibility(db: DB, d: PlacementDrive, s: User) {
   const reasons: string[] = []
-  if ((s.cgpa ?? 0) < d.minCgpa) reasons.push(`CGPA ${s.cgpa ?? 0} < ${d.minCgpa}`)
-  if ((s.backlogs ?? 0) > d.maxBacklogs) reasons.push(`${s.backlogs} backlog(s) > ${d.maxBacklogs} allowed`)
+  const cgpa = cgpaOf(db, s) ?? 0, bl = backlogCountOf(s)
+  if (cgpa < d.minCgpa) reasons.push(`CGPA ${fmtCgpa(cgpa)} < ${d.minCgpa}`)
+  if (bl > d.maxBacklogs) reasons.push(`${bl} backlog(s) > ${d.maxBacklogs} allowed`)
   return { ok: reasons.length === 0, reasons }
 }
 
@@ -42,7 +44,7 @@ export default function Placements() {
     if (!draft.company || !draft.deadline) return
     const d: PlacementDrive = { id: uid('dr'), ...draft, deadline: new Date(draft.deadline).getTime(), applications: [] }
     update((x) => { x.drives.push(d) })
-    notify(students.filter((s) => driveEligibility(d, s).ok).map((s) => s.id), `New ${d.kind} opening: ${d.company} (${d.role})`, '/placements')
+    notify(students.filter((s) => driveEligibility(db, d, s).ok).map((s) => s.id), `New ${d.kind} opening: ${d.company} (${d.role})`, '/placements')
     setCreating(false)
   }
   const m = manage ? db.drives.find((x) => x.id === manage) : null
@@ -53,12 +55,12 @@ export default function Placements() {
       <div className="grid grid-4">
         <Stat label="Active drives" value={db.drives.filter((d) => d.deadline > Date.now()).length} icon={<Briefcase size={22} />} />
         <Stat label="Students placed" value={`${placed.size}/${students.length}`} tone="success" />
-        {isStudent && <Stat label="My CGPA" value={user.cgpa?.toFixed(2) ?? '—'} tone="brand" hint={`${user.backlogs ?? 0} backlogs`} />}
+        {isStudent && <Stat label="My CGPA" value={fmtCgpa(cgpaOf(db, user))} tone="brand" hint={`${backlogCountOf(user)} backlogs`} />}
         {isStudent && <Stat label="My applications" value={db.drives.filter((d) => d.applications.some((a) => a.studentId === user.id)).length} tone="info" />}
       </div>
       <div className="grid grid-2">
         {drives.map((d) => {
-          const el = isStudent ? driveEligibility(d, user) : null
+          const el = isStudent ? driveEligibility(db, d, user) : null
           const mine = d.applications.find((a) => a.studentId === user.id)
           const open = d.deadline > Date.now()
           return (
@@ -69,7 +71,7 @@ export default function Placements() {
                 {isStudent && (mine ? <div className="row gap"><Badge tone={tone(mine.status)}>{mine.status}</Badge>{mine.slot && <span className="small">Interview: {fmtDateTime(mine.slot)}</span>}</div>
                   : el!.ok ? <button className="btn" disabled={!open} onClick={() => apply(d)}>Apply</button>
                   : <div className="small" style={{ color: 'var(--danger)' }}>Not eligible: {el!.reasons.join(', ')}</div>)}
-                {canManage && <div className="row between"><span className="small">{d.applications.length} applicants · {students.filter((s) => driveEligibility(d, s).ok).length} eligible</span><button className="btn btn-outline btn-sm" onClick={() => setManage(d.id)}>Manage</button></div>}
+                {canManage && <div className="row between"><span className="small">{d.applications.length} applicants · {students.filter((s) => driveEligibility(db, d, s).ok).length} eligible</span><button className="btn btn-outline btn-sm" onClick={() => setManage(d.id)}>Manage</button></div>}
               </div>
             </Card>
           )
@@ -83,7 +85,7 @@ export default function Placements() {
             return (
               <div key={a.studentId} className="card stack" style={{ padding: 10, gap: 6 }}>
                 <div className="row between"><strong>{s.name}</strong><Badge tone={tone(a.status)}>{a.status}</Badge></div>
-                <span className="small muted">{s.rollNo} · CGPA {s.cgpa} · {s.backlogs} backlogs{a.slot ? ` · interview ${fmtDateTime(a.slot)}` : ''}</span>
+                <span className="small muted">{s.rollNo} · CGPA {fmtCgpa(cgpaOf(db, s))} · {backlogCountOf(s)} backlogs{a.slot ? ` · interview ${fmtDateTime(a.slot)}` : ''}</span>
                 <div className="row gap wrap">
                   {a.status === 'APPLIED' && <button className="btn btn-outline btn-sm" onClick={() => setStatus(m, s.id, 'SHORTLISTED')}>Shortlist</button>}
                   {a.status === 'SHORTLISTED' && <button className="btn btn-outline btn-sm" onClick={() => setStatus(m, s.id, 'INTERVIEW', slot)}>Schedule interview ({fmtDateTime(slot)})</button>}

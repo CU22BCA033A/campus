@@ -5,7 +5,9 @@ import { audit, notify, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, PageHeader, Progress, Stat } from '../components/ui'
 import { attendanceStats, coursesFor, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo } from '../lib'
 import { bedOf, wardensFor } from '../hostels'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { StudentExams } from './Exams'
+import { Transcript } from './Grades'
 
 /** Parent portal: one login, several wards (children). */
 export default function ParentHome() {
@@ -48,7 +50,7 @@ export default function ParentHome() {
       </div>
       <div className="grid grid-4">
         <Stat label="Attendance" value={`${att.pct}%`} tone={att.pct >= 75 ? 'success' : 'danger'} hint={att.pct < 75 ? 'Below 75%: at risk for exams' : `${att.attended}/${att.total} classes`} icon={<CalendarCheck size={22} />} />
-        <Stat label="CGPA" value={ward.cgpa?.toFixed(2) ?? '—'} tone="brand" icon={<GraduationCap size={22} />} />
+        <Stat label="CGPA" value={fmtCgpa(cgpaOf(db, ward))} hint={`${backlogCountOf(ward)} backlog(s)`} tone="brand" icon={<GraduationCap size={22} />} />
         <Stat label="Fees due" value={inr(due.reduce((s, f) => s + feeOutstanding(f), 0))} tone={due.length ? 'danger' : 'success'} icon={<CreditCard size={22} />} />
         <Stat label="Hostel" value={room ? `${room.number} · Bed ${bedOf(room, ward.id)}` : 'Day scholar'} hint={room ? `${db.hostels.find((h) => h.id === room.hostelId)?.name ?? ''}${(() => { const abs = db.nightAttendance.filter((n) => n.absent.includes(ward.id) && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)).length; return abs ? ` · ${abs} night absence(s) in 30 days` : ' · present at night roll calls' })()}` : undefined} tone="accent" icon={<BedDouble size={22} />} />
       </div>
@@ -81,7 +83,8 @@ export default function ParentHome() {
           </Card>
         </div>
       </div>
-      <Card title="Examination results"><StudentExams studentId={ward.id} readOnly /></Card>
+      <Card title="Results (published by the Registrar of Evaluation)"><Transcript studentId={ward.id} embedded /></Card>
+      <Card title="Exam schedule & eligibility"><StudentExams studentId={ward.id} readOnly /></Card>
       <Card title="Latest notices" action={<Link to="/notices" className="small">All notices</Link>}>
         <div className="list">{notices.map((n) => <div key={n.id} className="list-item"><Megaphone size={16} className="muted" /><div className="grow"><strong>{n.title}</strong><div className="small muted">{timeAgo(n.createdAt)}</div></div></div>)}</div>
       </Card>

@@ -88,6 +88,23 @@ options (full marks only for exactly the right set). MCQ parts are marked on sub
 all-MCQ assignment is marked instantly. Older single-answer assignments keep working.
 Logic lives in `web/src/assignments.ts`.
 
+## One academic record per student
+
+Every result, grade, SGPA, CGPA and backlog count is **derived** from the Registrar of
+Evaluation's published result sheets (`web/src/academics.ts`); nothing is stored as a separate
+copy, so the student, parent, teacher, office and placement pages always agree.
+
+- Final = internal + external (as set up on each course's sheet) → grade and points; SGPA per
+  semester; CGPA over every course's latest attempt (a cleared backlog replaces the failed one).
+- Semesters completed before the portal are a **prior record** (CGPA, credits, backlogs) that
+  only the Registrar of Evaluation edits; portal results are added to it.
+- Results become visible to a class's students (and their parents) only when published;
+  students of other classes never see them. Unpublished courses show "Not yet published".
+- Marks flow in live: assignment, quiz and test marks feed the sheet's internal columns;
+  exam marks feed the external column; any edit and republish updates every page.
+- Profile changes (name, class, hostel…) are made once and appear everywhere, because pages
+  look people up by ID rather than keeping copies.
+
 ## Exams made of subjects
 
 The Registrar of Evaluation creates **one exam** for a class (e.g. *End Semester Examination
@@ -167,7 +184,7 @@ notifications and the audit log.
 | Assignments | answer each part in its format (written, link, file upload in allowed formats, MCQ / multiple-correct), edit & resubmit until marked, per-part marks, correct MCQ answers shown after marking | build assignments from mixed parts; per-student list (submitted / late / not submitted / marked); view answers, open PDFs/images inline; MCQ auto-marked (overridable), mark the rest per part, Save & next | |
 | Quizzes & tests | timed quiz, auto-submit, instant score | create MCQ quizzes, results, publish/hide scores | |
 | Attendance | course-wise %, 75% rule, "classes you can miss", monthly calendar | mark by tapping students, edit, CSV report | |
-| Grades | internal marks, grade, projected SGPA | gradebook | |
+| Grades | official transcript: published results by semester (internal + external = final, grade, points), SGPA, CGPA, credits, backlogs | gradebook mirroring the result sheet | |
 | Faculty feedback | anonymous star rating + comment | view ratings | |
 | Discussions | campus feed + course threads, replies | ✓ | ✓ |
 | Notice board | category filters, pinned | post / pin / delete, audience targeting | ✓ |

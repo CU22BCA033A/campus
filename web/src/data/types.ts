@@ -24,11 +24,12 @@ export interface User {
   gender?: 'Male' | 'Female'
   residence?: 'HOSTEL' | 'DAY_SCHOLAR' // students: set by the Admission department / Registrar
   backlogCourses?: string[] // students: courses failed and not yet cleared
+  priorRecord?: { cgpa: number; credits: number; backlogs: number; semesters: number } // semesters completed before the portal (Registrar of Evaluation)
   hostelId?: string // hostel-office staff: the hostel they are warden of (none = chief warden, all hostels)
   office?: Office // admin accounts: the office they work in (defaults to 'super')
   wardIds?: string[] // parent accounts: children at this institution
-  cgpa?: number
-  backlogs?: number
+  cgpa?: number // legacy: use cgpaOf()
+  backlogs?: number // legacy: use backlogCountOf()
   basicSalary?: number // staff: monthly basic pay (INR)
   hostelRoomId?: string
 }

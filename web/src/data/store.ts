@@ -16,6 +16,15 @@ function load(): DB {
       const fresh = createSeed()
       // Version 3 restructured students into classes; older demo data is replaced rather than patched.
       if ((saved.version ?? 1) < 3) return fresh
+      if (saved.version < 7) {
+        // Version 7: CGPA/backlogs are derived; keep earlier semesters as a prior record.
+        for (const u of saved.users) {
+          if (u.role !== 'student' || u.priorRecord) continue
+          const f = fresh.users.find((x) => x.id === u.id)
+          const semesters = Math.max(0, (u.semester ?? 1) - 1)
+          u.priorRecord = f?.priorRecord ?? { semesters, credits: semesters * 20, cgpa: semesters ? u.cgpa ?? 0 : 0, backlogs: Math.max(0, (u.backlogs ?? 0) - (u.backlogCourses?.length ?? 0)) }
+        }
+      }
       if (saved.version < 5) {
         // Version 5: hostels with wardens, student residence/gender, result sheets and exam evaluators.
         for (const u of saved.users) {

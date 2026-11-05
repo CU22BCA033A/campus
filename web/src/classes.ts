@@ -67,7 +67,7 @@ export function promoteClass(d: DB, classId: string, detainedIds: string[], acto
       continue
     }
     const sem = cls.semester
-    if (row.sgpa !== null) u.cgpa = Math.round((((u.cgpa ?? row.sgpa) * (sem - 1) + row.sgpa) / sem) * 100) / 100
+    void sem // CGPA is derived from published results (academics.ts), so nothing is stored here.
     // Backlogs were already recorded when each result sheet was published.
     if (graduating) {
       u.status = 'DEACTIVATED'

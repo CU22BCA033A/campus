@@ -4,8 +4,9 @@ import { applySessionRules, sessionDates, sessionOf, sessionPapers } from '../ex
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { sgpaOf, studentResults } from '../results'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { classCourses, classLabel } from '../classes'
-import { courseName, coursesFor, examEligibility, fmtDate, gradeResults, inr, userName, matches } from '../lib'
+import { courseName, coursesFor, examEligibility, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
 import { availableComponents, newSheet } from '../results'
 import { Link } from 'react-router-dom'
@@ -13,23 +14,6 @@ import type { DB, Exam, ExamKind } from '../data/types'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
 const ROOM_SEATS = 6 // small for the demo so several rooms are used
-
-/** Grades for one exam's published results. */
-export function examGrades(db: DB, exam: Exam) {
-  const rs = db.results.filter((r) => r.examId === exam.id)
-  return gradeResults(rs.map((r) => ({ studentId: r.studentId, pct: (r.marks / exam.maxMarks) * 100 })), exam.grading)
-}
-
-/** SGPA from published results (credit-weighted). */
-export function sgpaFor(db: DB, studentId: string) {
-  let pts = 0, cr = 0
-  for (const e of db.exams.filter((x) => x.resultsPublished)) {
-    const g = examGrades(db, e).grades.get(studentId)
-    const c = db.courses.find((x) => x.id === e.courseId)
-    if (g && c) { pts += g.point * c.credits; cr += c.credits }
-  }
-  return cr ? pts / cr : null
-}
 
 export default function Exams() {
   const user = useCurrentUser()!
@@ -72,7 +56,7 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
         <Stat label="Upcoming exams" value={upcoming.length} tone="info" />
         <Stat label="Eligible" value={`${elig.filter((x) => x.eligible).length}/${elig.length}`} tone={allEligible ? 'success' : 'danger'} />
         <Stat label={lastSem ? `SGPA (Sem ${lastSem})` : 'SGPA'} value={sgpa !== null ? sgpa.toFixed(2) : '—'} tone="brand" hint={(student.backlogCourses?.length ?? 0) ? `${student.backlogCourses!.length} backlog course(s)` : undefined} />
-        <Stat label="CGPA" value={student.cgpa?.toFixed(2) ?? '—'} tone="accent" />
+        <Stat label="CGPA" value={fmtCgpa(cgpaOf(db, student))} tone="accent" hint={`${backlogCountOf(student)} backlog(s)`} />
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'schedule', label: 'Schedule & eligibility' }, { id: 'results', label: 'Results', count: results.length }, ...(!readOnly ? [{ id: 'reval' as const, label: 'Re-evaluation' }] : [])]} />
       {tab === 'schedule' && (
@@ -122,6 +106,20 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
               })}</tbody>
             </table></div>
           )}
+          {(() => {
+            // Published tests that are not end-semester papers (e.g. mid-semester), as set up by the Registrar of Evaluation.
+            const tests = db.exams.filter((e) => e.resultsPublished && !db.resultSheets.some((sh) => sh.examId === e.id) && courses.some((c) => c.id === e.courseId))
+            const mine = tests.map((e) => ({ e, r: db.results.find((x) => x.examId === e.id && x.studentId === studentId) })).filter((x) => x.r)
+            return mine.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <h3>Tests (count towards internals where selected)</h3>
+                <div className="table-wrap"><table>
+                  <thead><tr><th>Exam</th><th>Course</th><th>Marks</th></tr></thead>
+                  <tbody>{mine.map(({ e, r }) => <tr key={e.id}><td>{sessionOf(db, e)?.title ?? e.title}</td><td>{courseName(db, e.courseId)}</td><td>{r!.marks}/{e.maxMarks}</td></tr>)}</tbody>
+                </table></div>
+              </div>
+            )
+          })()}
           {(student.backlogCourses?.length ?? 0) > 0 && <div className="alert alert-warning small" style={{ marginTop: 10 }}>Backlogs: {student.backlogCourses!.map((c) => db.courses.find((x) => x.id === c)?.code).join(', ')}. The Registrar of Evaluation registers you for the supplementary exam.</div>}
         </Card>
       )}

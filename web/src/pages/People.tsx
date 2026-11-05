@@ -6,6 +6,7 @@ import { Avatar, Badge, Card, Empty, PageHeader, Progress } from '../components/
 import EditUser, { canEditProfile } from '../components/EditUser'
 import { canAccess, personaLabel } from '../access'
 import { classLabel } from '../classes'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { attendanceStats, coursesFor, inr, studentDues } from '../lib'
 
 /** Read-only profile for staff, with an Edit button for offices that may change it. */
@@ -36,7 +37,7 @@ export default function Person() {
           <table style={{ marginTop: 14 }}><tbody>
             {u.rollNo && <tr><td className="muted">Roll number</td><td>{u.rollNo}</td></tr>}
             {u.role === 'student' && <tr><td className="muted">Class</td><td>{classLabel(cls)}</td></tr>}
-            {u.role === 'student' && <tr><td className="muted">CGPA / backlogs</td><td>{u.cgpa?.toFixed(2) ?? '—'} · {u.backlogs ?? 0} backlog(s)</td></tr>}
+            {u.role === 'student' && <tr><td className="muted">CGPA / backlogs</td><td>{fmtCgpa(cgpaOf(db, u))} · {backlogCountOf(u)} backlog(s)</td></tr>}
             {u.role !== 'student' && <tr><td className="muted">Department</td><td>{u.department}</td></tr>}
             {u.role === 'parent' && <tr><td className="muted">Wards</td><td>{(u.wardIds ?? []).map((w) => db.users.find((x) => x.id === w)?.name).join(', ') || '—'}</td></tr>}
             {showFees && <tr><td className="muted">Fee dues</td><td>{inr(studentDues(db, u.id))}</td></tr>}

@@ -5,6 +5,7 @@ import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import EditUser from '../components/EditUser'
 import { can } from '../access'
+import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { classCourses, classLabel, classResults, classStudents, promoteClass, resyncRosters } from '../classes'
 import { attendanceStats, matches, userName } from '../lib'
 import type { ClassGroup, Course, User } from '../data/types'
@@ -179,7 +180,7 @@ function ClassStudents({ cls, q, onEdit }: { cls: ClassGroup; q: string; onEdit:
               <td><div className="row gap"><Avatar name={s.name} color={s.avatarColor} size={28} /><Link to={`/people/${s.id}`}>{s.name}</Link></div></td>
               <td>{s.rollNo}</td>
               <td><Badge tone={a.pct >= 75 ? 'success' : a.pct >= 65 ? 'warning' : 'danger'}>{a.total ? `${a.pct}%` : '—'}</Badge></td>
-              <td>{s.cgpa?.toFixed(2) ?? '—'}</td><td>{s.backlogs ?? 0}</td>
+              <td>{fmtCgpa(cgpaOf(db, s))}</td><td>{backlogCountOf(s)}</td>
               <td><Badge tone={s.status === 'ACTIVE' ? 'success' : 'danger'}>{s.status}</Badge></td>
               <td>{can(me, 'editStudentProfiles') && <button className="btn btn-outline btn-sm" onClick={() => onEdit(s)}><Pencil size={12} /> Edit</button>}</td>
             </tr>

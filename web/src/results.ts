@@ -3,7 +3,7 @@
  * = final marks → grade. Backlog registrations and publishing live here too.
  */
 import type { DB, InternalComponent, ResultSheet, User } from './data/types'
-import { gradeFor } from './lib'
+import { gradeFor, registerSheetInternal } from './lib'
 
 export const compKey = (c: InternalComponent) => `${c.kind}:${c.id}`
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -133,8 +133,7 @@ export function publishSheet(d: DB, sheetId: string, actorId: string) {
     const had = list.has(sh.courseId)
     if (r.pass) list.delete(sh.courseId); else list.add(sh.courseId)
     u.backlogCourses = [...list]
-    if (!had && !r.pass) u.backlogs = (u.backlogs ?? 0) + 1
-    if (had && r.pass) u.backlogs = Math.max(0, (u.backlogs ?? 0) - 1)
+    void had // backlog counts are derived from backlogCourses (academics.ts)
   }
 }
 
@@ -142,3 +141,5 @@ export function publishSheet(d: DB, sheetId: string, actorId: string) {
 export function newSheet(courseId: string, semester: number, evaluatorId: string, examId?: string, term: ResultSheet['term'] = 'Regular'): ResultSheet {
   return { id: `rs-${courseId}-${term === 'Regular' ? `s${semester}` : `sup${Date.now().toString(36)}`}`, courseId, semester, term, internalMax: 40, externalMax: 60, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components: [], examId, evaluatorId, extraStudentIds: [], overrides: {}, status: 'DRAFT' }
 }
+
+registerSheetInternal((db, sh, sid) => sheetRows(db, sh).find((r) => r.student.id === sid)?.internal)
