@@ -68,7 +68,29 @@ export interface Assignment {
   title: string
   description: string
   dueAt: number
-  maxMarks: number
+  maxMarks: number // equals the sum of part marks when `parts` is set
+  parts?: AssignmentPart[] // how students answer; absent = classic single answer (text and/or file)
+}
+
+export type PartType = 'text' | 'link' | 'file' | 'mcq' | 'msq'
+export type FileKind = 'pdf' | 'doc' | 'slides' | 'sheet' | 'image' | 'zip' | 'any'
+export interface AssignmentPart {
+  id: string
+  type: PartType // text: written answer · link: URL · file: upload · mcq: one correct · msq: several correct
+  prompt: string
+  marks: number
+  required: boolean
+  options?: string[] // mcq / msq
+  correct?: number[] // mcq / msq: indexes of correct options
+  accept?: FileKind[] // file: allowed formats
+}
+export interface PartAnswer {
+  partId: string
+  text?: string // text / link
+  choices?: number[] // mcq / msq
+  fileName?: string
+  fileData?: string
+  fileSize?: number
 }
 
 export interface Submission {
@@ -78,6 +100,8 @@ export interface Submission {
   text: string
   fileName?: string
   fileData?: string // small attachments kept as a data URL so the teacher can open them
+  answers?: PartAnswer[] // per-part answers (multi-part assignments)
+  partMarks?: Record<string, number> // per-part marks; MCQ parts are filled automatically
   submittedAt: number
   gradedBy?: string
   gradedAt?: number

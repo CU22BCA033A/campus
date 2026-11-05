@@ -77,6 +77,15 @@ published, **Promote** moves the class to the next semester: failed courses beco
 CGPA is updated, ticked students are detained in a repeat section, and a final-semester class
 graduates into the alumni network. Logic lives in `web/src/classes.ts`.
 
+## Assignment formats
+
+An assignment is made of parts, and each part has its own answer format and marks:
+written answer, link, file upload (teacher picks allowed formats: PDF, Word, slides,
+spreadsheet, image, ZIP or any), MCQ with one correct option, and MCQ with multiple correct
+options (full marks only for exactly the right set). MCQ parts are marked on submission; an
+all-MCQ assignment is marked instantly. Older single-answer assignments keep working.
+Logic lives in `web/src/assignments.ts`.
+
 ## Help Center services
 
 Offices (and faculty, e.g. HOD office hours) publish bookable services with weekly slots:
@@ -92,7 +101,7 @@ notifications and the audit log.
 | Home dashboard | attendance %, pending work, open quizzes, fee due, today's classes | courses, students, submissions to grade, gate passes | users, inactive accounts, fee collection, events |
 | Timetable | weekly grid + export to Outlook/Google (.ics) | ✓ | ✓ |
 | Courses (LMS) | materials, schedule, discussion | + add materials, student list with attendance | all courses |
-| Assignments | submit text/link/file, resubmit until marked, view own submission, marks & feedback | create; per-student list (submitted / late / not submitted / marked); view answer & attachment; mark with feedback, Save & next | |
+| Assignments | answer each part in its format (written, link, file upload in allowed formats, MCQ / multiple-correct), edit & resubmit until marked, per-part marks, correct MCQ answers shown after marking | build assignments from mixed parts; per-student list (submitted / late / not submitted / marked); view answers, open PDFs/images inline; MCQ auto-marked (overridable), mark the rest per part, Save & next | |
 | Quizzes & tests | timed quiz, auto-submit, instant score | create MCQ quizzes, results, publish/hide scores | |
 | Attendance | course-wise %, 75% rule, "classes you can miss", monthly calendar | mark by tapping students, edit, CSV report | |
 | Grades | internal marks, grade, projected SGPA | gradebook | |

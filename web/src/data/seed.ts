@@ -97,7 +97,7 @@ const allStudentIds = [...bca2024Ids, ...bca2025Ids, ...bba2024Ids]
 
 export function createSeed(): DB {
   return {
-    version: 3,
+    version: 4,
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser],
     classes: [
       { id: 'cls-bca-2024-a', program: 'BCA', batch: 2024, section: 'A', semester: 5, maxSemesters: 6, mentorId: 'f1' },
@@ -124,8 +124,26 @@ export function createSeed(): DB {
       { id: 'm5', courseId: 'c4', title: 'Graph theory reference', kind: 'link', url: '#', postedAt: d(-3) },
     ],
     assignments: [
-      { id: 'as1', courseId: 'c1', title: 'Build a responsive portfolio page', description: 'Create a responsive single-page portfolio using semantic HTML and CSS grid. Submit the GitHub link.', dueAt: d(3, 23), maxMarks: 20 },
-      { id: 'as2', courseId: 'c2', title: 'ER diagram for a library system', description: 'Design an ER diagram and convert it to relational tables in 3NF.', dueAt: d(6, 23), maxMarks: 25 },
+      { id: 'as1', courseId: 'c1', title: 'Build a responsive portfolio page', description: 'Create a responsive single-page portfolio using semantic HTML and CSS grid.', dueAt: d(3, 23), maxMarks: 20, parts: [
+        { id: 'p1', type: 'link', prompt: 'GitHub repository link', marks: 12, required: true },
+        { id: 'p2', type: 'file', prompt: 'Design report (layout decisions, screenshots)', marks: 8, required: true, accept: ['pdf', 'doc'] },
+      ] },
+      { id: 'as2', courseId: 'c2', title: 'ER diagram for a library system', description: 'Design an ER diagram and convert it to relational tables in 3NF.', dueAt: d(6, 23), maxMarks: 25, parts: [
+        { id: 'p1', type: 'file', prompt: 'ER diagram (drawn or exported)', marks: 10, required: true, accept: ['image', 'pdf'] },
+        { id: 'p2', type: 'text', prompt: 'List the relational tables in 3NF with primary and foreign keys', marks: 10, required: true },
+        { id: 'p3', type: 'mcq', prompt: 'A borrower can borrow many books and a book can be borrowed by many borrowers over time. This relationship is:', marks: 5, required: true, options: ['One-to-one', 'One-to-many', 'Many-to-many', 'Recursive'], correct: [2] },
+      ] },
+      { id: 'as4', courseId: 'c2', title: 'Normalisation concept check', description: 'Answer the objective questions, then justify one answer in your own words.', dueAt: d(4, 23), maxMarks: 12, parts: [
+        { id: 'p1', type: 'mcq', prompt: 'Which normal form removes partial dependencies?', marks: 2, required: true, options: ['1NF', '2NF', '3NF', 'BCNF'], correct: [1] },
+        { id: 'p2', type: 'mcq', prompt: 'A table is in 1NF when…', marks: 2, required: true, options: ['every attribute holds atomic values', 'there are no transitive dependencies', 'every determinant is a candidate key', 'it has a single-column primary key'], correct: [0] },
+        { id: 'p3', type: 'msq', prompt: 'Select ALL statements that are true about BCNF.', marks: 4, required: true, options: ['Every BCNF relation is also in 3NF', 'Every 3NF relation is also in BCNF', 'In BCNF every determinant is a candidate key', 'BCNF allows partial dependencies'], correct: [0, 2] },
+        { id: 'p4', type: 'text', prompt: 'Explain, with a small example, why 3NF does not always imply BCNF.', marks: 4, required: true },
+      ] },
+      { id: 'as5', courseId: 'c1', title: 'HTTP & REST quick check', description: 'Objective questions, marked automatically as soon as you submit.', dueAt: d(2, 23), maxMarks: 6, parts: [
+        { id: 'p1', type: 'mcq', prompt: 'Which HTTP method is idempotent and used to replace a resource?', marks: 2, required: true, options: ['POST', 'PUT', 'PATCH', 'CONNECT'], correct: [1] },
+        { id: 'p2', type: 'mcq', prompt: 'Status code for "resource created" is…', marks: 2, required: true, options: ['200', '201', '204', '302'], correct: [1] },
+        { id: 'p3', type: 'msq', prompt: 'Select ALL safe methods.', marks: 2, required: true, options: ['GET', 'HEAD', 'DELETE', 'OPTIONS'], correct: [0, 1, 3] },
+      ] },
       { id: 'as3', courseId: 'c3', title: 'Scheduling simulation', description: 'Simulate FCFS, SJF and Round Robin for the given process table and compare waiting times.', dueAt: d(-2, 23), maxMarks: 15 },
     ],
     submissions: [

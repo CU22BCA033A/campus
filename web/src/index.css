@@ -206,3 +206,6 @@ tbody tr:hover { background: var(--surface-2); }
 
 .page-search { width: 260px; max-width: 100%; flex: 0 1 260px; }
 @media (max-width: 560px) { .page-search { flex: 1 1 100%; width: 100%; } .page-header > div:last-child { width: 100%; } }
+
+/* Long modal forms scroll instead of squashing their cards. */
+.modal-body > * { flex-shrink: 0; }

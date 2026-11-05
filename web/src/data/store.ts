@@ -14,6 +14,15 @@ function load(): DB {
       const fresh = createSeed()
       // Version 3 restructured students into classes; older demo data is replaced rather than patched.
       if ((saved.version ?? 1) < 3) return fresh
+      if (saved.version < 4) {
+        // Version 4: multi-part assignments. Refresh untouched demo assignments and add the new ones.
+        for (const a of fresh.assignments) {
+          const i = saved.assignments.findIndex((x) => x.id === a.id)
+          const touched = saved.submissions.some((s) => s.assignmentId === a.id)
+          if (i < 0) saved.assignments.push(a)
+          else if (!saved.assignments[i].parts && a.parts && !touched) saved.assignments[i] = a
+        }
+      }
       for (const k of Object.keys(fresh) as (keyof DB)[]) {
         if (saved[k] === undefined) (saved as unknown as Record<string, unknown>)[k] = fresh[k]
       }
