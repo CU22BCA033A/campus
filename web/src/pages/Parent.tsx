@@ -4,7 +4,7 @@ import { BedDouble, CalendarCheck, CreditCard, GraduationCap, Megaphone } from '
 import { audit, notify, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, PageHeader, Progress, Stat } from '../components/ui'
 import { attendanceStats, coursesFor, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo } from '../lib'
-import { wardensFor } from '../hostels'
+import { bedOf, wardensFor } from '../hostels'
 import { StudentExams } from './Exams'
 
 /** Parent portal: one login, several wards (children). */
@@ -50,7 +50,7 @@ export default function ParentHome() {
         <Stat label="Attendance" value={`${att.pct}%`} tone={att.pct >= 75 ? 'success' : 'danger'} hint={att.pct < 75 ? 'Below 75%: at risk for exams' : `${att.attended}/${att.total} classes`} icon={<CalendarCheck size={22} />} />
         <Stat label="CGPA" value={ward.cgpa?.toFixed(2) ?? '—'} tone="brand" icon={<GraduationCap size={22} />} />
         <Stat label="Fees due" value={inr(due.reduce((s, f) => s + feeOutstanding(f), 0))} tone={due.length ? 'danger' : 'success'} icon={<CreditCard size={22} />} />
-        <Stat label="Hostel" value={room ? room.number : 'Day scholar'} hint={room ? `${db.hostels.find((h) => h.id === room.hostelId)?.name ?? ''}${(() => { const abs = db.nightAttendance.filter((n) => n.absent.includes(ward.id) && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)).length; return abs ? ` · ${abs} night absence(s) in 30 days` : ' · present at night roll calls' })()}` : undefined} tone="accent" icon={<BedDouble size={22} />} />
+        <Stat label="Hostel" value={room ? `${room.number} · Bed ${bedOf(room, ward.id)}` : 'Day scholar'} hint={room ? `${db.hostels.find((h) => h.id === room.hostelId)?.name ?? ''}${(() => { const abs = db.nightAttendance.filter((n) => n.absent.includes(ward.id) && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)).length; return abs ? ` · ${abs} night absence(s) in 30 days` : ' · present at night roll calls' })()}` : undefined} tone="accent" icon={<BedDouble size={22} />} />
       </div>
       <div className="grid grid-2">
         <Card title="Course-wise attendance">

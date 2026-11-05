@@ -18,3 +18,24 @@ export const wardensFor = (db: DB, student: User) => {
   const hostel = hostelOfStudent(db, student.id) ?? hostelsForGender(db, student.gender)[0]
   return db.users.filter((u) => u.role === 'admin' && u.office === 'hostel' && u.status === 'ACTIVE' && (!u.hostelId || u.hostelId === hostel?.id)).map((u) => u.id)
 }
+
+/* ---------------- Beds (A, B, C…) ---------------- */
+export const bedLetters = (capacity: number) => Array.from({ length: capacity }, (_, i) => String.fromCharCode(65 + i))
+/** Give every occupant a unique bed letter within the room's capacity (keeps existing letters). */
+export function normalizeBeds(d: DB) {
+  for (const r of d.rooms) {
+    const letters = bedLetters(r.capacity)
+    const beds: Record<string, string> = {}
+    for (const o of r.occupants) { const b = r.beds?.[o]; if (b && letters.includes(b) && !Object.values(beds).includes(b)) beds[o] = b }
+    for (const o of r.occupants) if (!beds[o]) { const free = letters.find((l) => !Object.values(beds).includes(l)); if (free) beds[o] = free }
+    r.beds = beds
+  }
+}
+export const bedOf = (r: DB['rooms'][number], studentId: string) => r.beds?.[studentId] ?? bedLetters(r.capacity)[r.occupants.indexOf(studentId)] ?? '?'
+export const freeBeds = (r: DB['rooms'][number]) => bedLetters(r.capacity).filter((l) => !r.occupants.some((o) => bedOf(r, o) === l))
+/** Residents of a hostel in walking order: room number (natural order), then bed letter. */
+export function residentsInOrder(db: DB, hostelId: string) {
+  return db.rooms.filter((r) => r.hostelId === hostelId)
+    .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
+    .flatMap((r) => r.occupants.map((o) => ({ id: o, room: r.number, roomId: r.id, bed: bedOf(r, o) })).sort((a, b) => a.bed.localeCompare(b.bed)))
+}

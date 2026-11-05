@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { BedDouble, Pencil, Plus, ScanLine, Utensils, Wand2 } from 'lucide-react'
-import { hostelsForGender, isChiefWarden, managedHostels, waitingList } from '../hostels'
+import { bedLetters, bedOf, freeBeds, hostelsForGender, isChiefWarden, managedHostels, residentsInOrder, waitingList } from '../hostels'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
@@ -49,8 +49,8 @@ function StudentHostel() {
     <>
       <PageHeader title="Hostel & mess" subtitle="From allotment to exit" actions={<button className="btn" onClick={() => setApplying(true)}><Plus size={14} /> Request leave</button>} />
       <div className="grid grid-4">
-        <Stat label="Room" value={room.number} hint={`${room.block} · ${room.type}`} icon={<BedDouble size={22} />} />
-        <Stat label="Room-mates" value={room.occupants.length - 1} hint={room.occupants.filter((o) => o !== user.id).map((o) => userName(db, o)).join(', ') || 'None'} tone="info" />
+        <Stat label="Room · Bed" value={`${room.number} · ${bedOf(room, user.id)}`} hint={`${db.hostels.find((h) => h.id === room.hostelId)?.name ?? room.block} · ${room.type}`} icon={<BedDouble size={22} />} />
+        <Stat label="Room-mates" value={room.occupants.length - 1} hint={room.occupants.filter((o) => o !== user.id).map((o) => `${userName(db, o)} (Bed ${bedOf(room, o)})`).join(', ') || 'None'} tone="info" />
         <Stat label="Hostel fee / semester" value={inr(room.feePerSem)} tone="accent" />
         {(() => { const nights = db.nightAttendance.filter((n) => n.hostelId === room.hostelId && (n.present.includes(user.id) || n.absent.includes(user.id) || n.onLeave.includes(user.id))); const abs = nights.filter((n) => n.absent.includes(user.id)); return <Stat label="Night roll calls" value={`${nights.length - abs.length}/${nights.length}`} hint={abs.length ? `Absent: ${abs.map((n) => fmtDate(n.date)).join(', ')}` : 'Present every night'} tone={abs.length ? 'danger' : 'success'} /> })()}
       </div>
@@ -104,7 +104,7 @@ function HostelAdmin() {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ ok: boolean; text: string } | null>(null)
-  const [allotFor, setAllotFor] = useState<string | null>(null) // room id
+  const [allotFor, setAllotFor] = useState<{ roomId: string; bed: string } | null>(null) // room + bed
   const [allotStudent, setAllotStudent] = useState<string | null>(null) // student id (from waiting list)
   const [term, setTerm] = useState('')
   const [roomDraft, setRoomDraft] = useState<{ id?: string; number: string; capacity: number; type: 'AC' | 'Non-AC'; feePerSem: number } | null>(null)
@@ -119,12 +119,17 @@ function HostelAdmin() {
   const leaves = db.hostelLeaves.filter((l) => residents.has(l.studentId))
   const wardens = db.users.filter((u) => u.role === 'admin' && u.office === 'hostel')
 
-  const allot = (studentId: string, roomId: string) => {
+  const allot = (studentId: string, roomId: string, bed?: string) => {
     const r = db.rooms.find((x) => x.id === roomId)!
-    if (r.occupants.length >= r.capacity) return alert('That room is full.')
-    update((d) => { d.rooms.forEach((x) => { x.occupants = x.occupants.filter((o) => o !== studentId) }); d.rooms.find((x) => x.id === roomId)!.occupants.push(studentId) })
-    notify([studentId], `Hostel room ${r.number}, ${hostel.name} allotted`, '/hostel')
-    audit(user.id, 'HOSTEL_ALLOT', `${userName(db, studentId)} → ${hostel.name} ${r.number}`)
+    const letter = bed ?? freeBeds(r)[0]
+    if (!letter || !freeBeds(r).includes(letter)) return alert('That bed is not free.')
+    update((d) => {
+      d.rooms.forEach((x) => { x.occupants = x.occupants.filter((o) => o !== studentId); if (x.beds) delete x.beds[studentId] })
+      const room = d.rooms.find((x) => x.id === roomId)!
+      room.occupants.push(studentId); room.beds = { ...(room.beds ?? {}), [studentId]: letter }
+    })
+    notify([studentId], `Hostel room ${r.number}, Bed ${letter} in ${hostel.name} allotted`, '/hostel')
+    audit(user.id, 'HOSTEL_ALLOT', `${userName(db, studentId)} → ${hostel.name} ${r.number} bed ${letter}`)
   }
   /** Conflict-free bulk allocation within this hostel: waiting-list students into free beds. */
   const autoAllocate = () => {
@@ -224,8 +229,21 @@ function HostelAdmin() {
               <Card key={r.id} title={r.number} action={<div className="row gap"><Badge tone={r.occupants.length >= r.capacity ? 'danger' : 'success'}>{r.occupants.length}/{r.capacity}</Badge><button className="icon-btn" aria-label={`Edit room ${r.number}`} onClick={() => setRoomDraft({ id: r.id, number: r.number, capacity: r.capacity, type: r.type, feePerSem: r.feePerSem })}><Pencil size={14} /></button></div>}>
                 <div className="small muted">{r.type} · {inr(r.feePerSem)}/sem</div>
                 <div className="list" style={{ marginTop: 8 }}>
-                  {r.occupants.map((o) => <div key={o} className="list-item small"><span className="grow">{userName(db, o)} <span className="muted">{db.users.find((u) => u.id === o)?.rollNo}</span></span><button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { d.rooms.find((x) => x.id === r.id)!.occupants = r.occupants.filter((x) => x !== o) }); audit(user.id, 'HOSTEL_VACATE', `${userName(db, o)} from ${r.number}`) }}>Vacate</button></div>)}
-                  {r.occupants.length < r.capacity && <button className="btn btn-outline btn-sm" disabled={!waiting.length} onClick={() => setAllotFor(r.id)}>{waiting.length ? 'Allot bed' : 'No one waiting'}</button>}
+                  {bedLetters(r.capacity).map((letter) => {
+                    const o = r.occupants.find((x) => bedOf(r, x) === letter)
+                    return (
+                      <div key={letter} className="list-item small">
+                        <Badge tone={o ? 'brand' : 'neutral'}>Bed {letter}</Badge>
+                        {o ? <>
+                          <span className="grow">{userName(db, o)} <span className="muted">{db.users.find((u) => u.id === o)?.rollNo}</span></span>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.rooms.find((y) => y.id === r.id)!; x.occupants = x.occupants.filter((y) => y !== o); if (x.beds) delete x.beds[o] }); audit(user.id, 'HOSTEL_VACATE', `${userName(db, o)} from ${r.number} bed ${letter}`) }}>Vacate</button>
+                        </> : <>
+                          <span className="grow muted">Empty</span>
+                          <button className="btn btn-outline btn-sm" disabled={!waiting.length} onClick={() => setAllotFor({ roomId: r.id, bed: letter })}>{waiting.length ? 'Allot' : 'No one waiting'}</button>
+                        </>}
+                      </div>
+                    )
+                  })}
                   {r.occupants.length === 0 && <button className="btn btn-ghost btn-sm" onClick={() => confirm(`Remove room ${r.number}?`) && update((d) => { d.rooms = d.rooms.filter((x) => x.id !== r.id) })}>Remove room</button>}
                 </div>
               </Card>
@@ -296,11 +314,16 @@ function HostelAdmin() {
       )}
 
       {(allotFor || allotStudent) && (
-        <Modal title={allotStudent ? `Allot a room to ${userName(db, allotStudent)}` : `Allot a bed in ${db.rooms.find((r) => r.id === allotFor)?.number}`} onClose={() => { setAllotFor(null); setAllotStudent(null) }}>
+        <Modal title={allotStudent ? `Allot a room and bed to ${userName(db, allotStudent)}` : `Allot ${db.rooms.find((r) => r.id === allotFor!.roomId)?.number} · Bed ${allotFor!.bed}`} onClose={() => { setAllotFor(null); setAllotStudent(null) }}>
           {allotStudent
-            ? rooms.filter((r) => r.occupants.length < r.capacity).map((r) => <div key={r.id} className="row between"><span>{r.number} <span className="muted small">{r.type} · {r.occupants.length}/{r.capacity}</span></span><button className="btn btn-sm" onClick={() => { allot(allotStudent, r.id); setAllotStudent(null) }}>Allot</button></div>)
-            : waiting.map((s) => <div key={s.id} className="row between"><span>{s.name} <span className="muted small">{s.rollNo}</span></span><button className="btn btn-sm" onClick={() => { allot(s.id, allotFor!); setAllotFor(null) }}>Allot</button></div>)}
-          {allotStudent && !rooms.some((r) => r.occupants.length < r.capacity) && <Empty text="No free beds. Add a room first." />}
+            ? [...rooms].sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true })).filter((r) => freeBeds(r).length).map((r) => (
+                <div key={r.id} className="row between wrap gap">
+                  <span>{r.number} <span className="muted small">{r.type} · {r.occupants.length}/{r.capacity}</span></span>
+                  <div className="row gap">{freeBeds(r).map((b) => <button key={b} className="btn btn-sm" onClick={() => { allot(allotStudent, r.id, b); setAllotStudent(null) }}>Bed {b}</button>)}</div>
+                </div>
+              ))
+            : waiting.map((s) => <div key={s.id} className="row between"><span>{s.name} <span className="muted small">{s.rollNo}</span></span><button className="btn btn-sm" onClick={() => { allot(s.id, allotFor!.roomId, allotFor!.bed); setAllotFor(null) }}>Allot bed {allotFor!.bed}</button></div>)}
+          {allotStudent && !rooms.some((r) => freeBeds(r).length) && <Empty text="No free beds. Add a room first." />}
         </Modal>
       )}
       {roomDraft && (
@@ -332,8 +355,8 @@ function NightRollCallPanel({ hostelId, term }: { hostelId: string; term: string
   const db = useDB()
   const user = useCurrentUser()!
   const [date, setDate] = useState(today())
-  const rooms = db.rooms.filter((r) => r.hostelId === hostelId)
-  const residents = rooms.flatMap((r) => r.occupants.map((o) => ({ id: o, room: r.number }))).filter((x) => db.users.find((u) => u.id === x.id)?.status === 'ACTIVE')
+  // Walking order inside the hostel: room number, then bed A, B, C…
+  const residents = residentsInOrder(db, hostelId).filter((x) => db.users.find((u) => u.id === x.id)?.status === 'ACTIVE')
   const record = db.nightAttendance.find((n) => n.hostelId === hostelId && n.date === date)
   // A student is on leave tonight if an approved hostel leave covers 10 PM of the chosen date.
   const night = new Date(`${date}T22:00`).getTime()
@@ -377,12 +400,14 @@ function NightRollCallPanel({ hostelId, term }: { hostelId: string; term: string
         </div>
         {residents.length === 0 ? <Empty text="No residents in this hostel." /> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Room</th><th>Student</th><th>Status</th><th>Remark</th><th>Absences (30 nights)</th></tr></thead>
-            <tbody>{residents.filter((r) => matches(term, r.room, userName(db, r.id), db.users.find((u) => u.id === r.id)?.rollNo)).sort((a, b) => a.room.localeCompare(b.room)).map((r) => {
+            <thead><tr><th>Room</th><th>Bed</th><th>Student</th><th>Status</th><th>Remark</th><th>Absences (30 nights)</th></tr></thead>
+            <tbody>{residents.filter((r) => matches(term, r.room, `bed ${r.bed}`, userName(db, r.id), db.users.find((u) => u.id === r.id)?.rollNo)).map((r, i, arr) => {
               const st = marks[r.id] ?? 'PRESENT'
+              const firstInRoom = i === 0 || arr[i - 1].room !== r.room
               return (
-                <tr key={r.id}>
-                  <td>{r.room}</td>
+                <tr key={r.id} style={firstInRoom && i > 0 ? { borderTop: '2px solid var(--border)' } : undefined}>
+                  <td>{firstInRoom ? <strong>{r.room}</strong> : ''}</td>
+                  <td><Badge tone="brand">{r.bed}</Badge></td>
                   <td>{userName(db, r.id)}<div className="small muted">{db.users.find((u) => u.id === r.id)?.rollNo}</div></td>
                   <td>
                     <div className="row gap">

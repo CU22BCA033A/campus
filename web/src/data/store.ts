@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { createSeed } from './seed'
+import { groupIntoSessions } from '../exams'
+import { normalizeBeds } from '../hostels'
 import type { DB, User } from './types'
 
 const KEY = 'campus-db-v1'
@@ -44,6 +46,8 @@ function load(): DB {
         u.office = seeded?.office ?? 'super'
         if (seeded) u.name = seeded.name
       }
+      groupIntoSessions(saved)
+      normalizeBeds(saved)
       saved.version = fresh.version
       return saved
     }
@@ -81,6 +85,8 @@ function emit() {
 export function update(mutator: (draft: DB) => void) {
   const draft = structuredClone(db)
   mutator(draft)
+  groupIntoSessions(draft)
+  normalizeBeds(draft)
   db = draft
   emit()
 }

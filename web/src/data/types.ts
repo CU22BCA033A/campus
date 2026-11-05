@@ -297,6 +297,7 @@ export interface DB {
   applications: Application[]
   scholarships: Scholarship[]
   exams: Exam[]
+  examSessions: ExamSession[]
   results: ExamResult[]
   revaluations: Revaluation[]
   hostels: Hostel[]
@@ -371,6 +372,20 @@ export interface Exam {
   grading: 'ABSOLUTE' | 'RELATIVE'
   evaluatorId?: string // professor allotted to evaluate this exam and enter marks
   kind?: 'Regular' | 'Supplementary'
+  sessionId?: string // the exam this subject paper belongs to
+}
+
+/** One exam (e.g. "End Semester Examination – Nov 2026") made of subject papers (`Exam` records). */
+export type ExamKind = 'End Semester' | 'Mid-Semester' | 'Internal Test' | 'Supplementary' | 'Other'
+export interface ExamSession {
+  id: string
+  title: string
+  kind: ExamKind
+  classId?: string // supplementary exams can span classes
+  minAttendance: number
+  requireFeesCleared: boolean
+  grading: 'ABSOLUTE' | 'RELATIVE'
+  createdAt: number
 }
 export interface ExamResult {
   id: string
@@ -401,6 +416,7 @@ export interface HostelRoom {
   id: string
   hostelId: string
   block: string // display name (kept for older data)
+  beds?: Record<string, string> // studentId → bed letter (A, B, C…)
   number: string
   capacity: number
   occupants: string[]

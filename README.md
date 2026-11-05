@@ -88,6 +88,18 @@ options (full marks only for exactly the right set). MCQ parts are marked on sub
 all-MCQ assignment is marked instantly. Older single-answer assignments keep working.
 Logic lives in `web/src/assignments.ts`.
 
+## Exams made of subjects
+
+The Registrar of Evaluation creates **one exam** for a class (e.g. *End Semester Examination
+– Nov 2026*) and adds the class's subjects to it as papers, each with its own date, time,
+maximum marks and evaluator ("Fill dates" spaces them out, skipping Sundays; overlapping
+papers are flagged). Eligibility rules and grading are set once per exam and apply to every
+subject. Subjects can be added, edited or removed later; seating and invigilators can be
+generated for all subjects at once; students see their schedule grouped by exam and get one
+hall ticket per exam. End-semester subjects get result sheets automatically; other exams
+publish marks from the exam card. Supplementary papers created from backlog registration
+join a single supplementary exam. Logic lives in `web/src/exams.ts`.
+
 ## Result sheets (internal + external)
 
 Each course offering has a **result sheet**. The Registrar of Evaluation creates the
@@ -110,8 +122,8 @@ Logic lives in `web/src/results.ts`.
 
 ## Hostels
 
-Boys and girls hostels each have a block warden who manages only that hostel (rooms, add
-room, allotment, waiting list, leave approvals, mess). The chief warden manages all hostels,
+Boys and girls hostels each have a block warden who manages only that hostel (rooms with
+lettered beds A, B, C…, add room, bed-level allotment, waiting list, leave approvals, mess). The chief warden manages all hostels,
 adds hostels and assigns wardens. The Admission department and Registrar set each student's
 gender and **hostel / day scholar** status (also captured on the application form); hostel
 students join the matching hostel's waiting list and that warden is notified. Day scholars
@@ -131,7 +143,8 @@ in the audit trail; the teacher is notified).
 
 ## Hostel night attendance
 
-Wardens take a nightly roll call for their hostel: each resident is *In*, *Absent* or *On
+Wardens take a nightly roll call for their hostel, listed in walking order (room number, then
+bed A, B, C…): each resident is *In*, *Absent* or *On
 leave* (approved hostel leave covering 10 PM is applied automatically), with remarks. Parents
 of absentees are notified; the last 30 nights' absences are shown per student, and students
 and parents see the roll-call record. Wardens can rename their hostel.

@@ -1,5 +1,7 @@
 import type { DB, User } from './types'
 import { createErpSeed, officeStaff, parentUser } from './seedErp'
+import { groupIntoSessions } from '../exams'
+import { normalizeBeds } from '../hostels'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -104,8 +106,9 @@ const withResidence = (u: User): User => u.role !== 'student' ? u : {
 }
 
 export function createSeed(): DB {
-  return {
-    version: 5,
+  const seed: DB = {
+    version: 6,
+    examSessions: [],
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [
       { id: 'cls-bca-2024-a', program: 'BCA', batch: 2024, section: 'A', semester: 5, maxSemesters: 6, mentorId: 'f1' },
@@ -267,4 +270,7 @@ export function createSeed(): DB {
       { id: 'nt3', userId: 's1', text: 'Your gate pass was approved', link: '/gate-pass', createdAt: d(-4, 12), read: true },
     ],
   }
+  groupIntoSessions(seed)
+  normalizeBeds(seed)
+  return seed
 }
