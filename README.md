@@ -117,6 +117,25 @@ gender and **hostel / day scholar** status (also captured on the application for
 students join the matching hostel's waiting list and that warden is notified. Day scholars
 are never allotted rooms. Logic lives in `web/src/hostels.ts`.
 
+## Timetable & attendance (Registrar of Evaluation)
+
+The Registrar of Evaluation builds each class's weekly timetable: add, edit, move or delete
+periods (click an empty cell to add one there), copy another class's pattern, and export to
+calendar apps. Every period is checked for clashes (same class, same teacher in any class, same
+room) before saving. Teachers and students are notified of changes; the Registrar office can
+view every class's timetable read-only.
+
+Attendance: an institution-wide report with a shortage threshold, shortage notices to students
+and parents, and marking/correcting attendance for any course on the teacher's behalf (logged
+in the audit trail; the teacher is notified).
+
+## Hostel night attendance
+
+Wardens take a nightly roll call for their hostel: each resident is *In*, *Absent* or *On
+leave* (approved hostel leave covering 10 PM is applied automatically), with remarks. Parents
+of absentees are notified; the last 30 nights' absences are shown per student, and students
+and parents see the roll-call record. Wardens can rename their hostel.
+
 ## Help Center services
 
 Offices (and faculty, e.g. HOD office hours) publish bookable services with weekly slots:

@@ -86,6 +86,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Waiting for a room', value: waiting.length, tone: 'danger', to: '/hostel' },
         ],
         tasks: [
+          ...scope.filter((h) => !db.nightAttendance.some((n) => n.hostelId === h.id && n.date === new Date().toISOString().slice(0, 10))).map((h) => ({ text: `Take tonight's roll call: ${h.name}`, sub: 'Night attendance', to: '/hostel', tone: 'info' as const })),
           ...waiting.map((st) => ({ text: `Allot a room: ${st.name}`, sub: `${st.rollNo} · ${st.gender} · opted for hostel`, to: '/hostel', tone: 'warning' as const })),
           ...leaves.map((l) => ({ text: `Hostel leave: ${userName(db, l.studentId)}`, sub: `${l.reason} · parent approved`, to: '/hostel', tone: 'warning' as const })),
           ...passes.map((g) => ({ text: `Gate pass: ${userName(db, g.studentId)}`, sub: g.reason, to: '/gate-pass', tone: 'info' as const })),
@@ -135,9 +136,10 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           ...(db.users.some((u) => u.backlogCourses?.length) ? [{ text: `${db.users.filter((u) => u.backlogCourses?.length).length} student(s) with backlogs: register for re-exams`, to: '/results', tone: 'info' as const }] : []),
           ...db.classes.filter((c) => classResults(db, c).ready && !c.promotedAt).map((c) => ({ text: `Results published: promote ${classLabel(c)}`, to: '/classes', tone: 'info' as const })),
           ...db.classes.filter((c) => classCourses(db, c).length === 0).map((c) => ({ text: `Create courses & assign teachers: ${classLabel(c)}`, to: '/classes', tone: 'warning' as const })),
+          ...db.classes.filter((c) => classCourses(db, c).length > 0 && !db.timetable.some((t) => classCourses(db, c).some((co) => co.id === t.courseId))).map((c) => ({ text: `Build the timetable: ${classLabel(c)}`, to: '/timetable', tone: 'warning' as const })),
           ...apptTasks,
         ],
-        shortcuts: [{ to: '/results', label: 'Result sheets' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
+        shortcuts: [{ to: '/results', label: 'Result sheets' }, { to: '/timetable', label: 'Timetable' }, { to: '/attendance', label: 'Attendance' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
       }
     }
     case 'library': {

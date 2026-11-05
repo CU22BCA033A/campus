@@ -1,13 +1,27 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, Download } from 'lucide-react'
-import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
-import { Avatar, Badge, Card, PageHeader, Progress } from '../components/ui'
-import { attendanceStats, coursesFor, fmtDate, matches } from '../lib'
+import { AlertTriangle, Bell, Check, Download } from 'lucide-react'
+import { can } from '../access'
+import { classLabel } from '../classes'
+import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
+import { Avatar, Badge, Card, PageHeader, Progress, Tabs } from '../components/ui'
+import { attendanceStats, coursesFor, fmtDate, matches, userName } from '../lib'
 
 export default function Attendance() {
   const user = useCurrentUser()!
   if (user.role === 'student') return <StudentAttendance />
+  if (can(user, 'manageAttendance')) return <AttendanceOffice />
   return user.role === 'admin' ? <AttendanceReport /> : <MarkAttendance />
+}
+
+/** Registrar of Evaluation: institution-wide report plus marking / correcting any course. */
+function AttendanceOffice() {
+  const [tab, setTab] = useState<'report' | 'mark'>('report')
+  return (
+    <>
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'report', label: 'Attendance report' }, { id: 'mark', label: 'Mark / correct attendance' }]} />
+      {tab === 'report' ? <AttendanceReport /> : <MarkAttendance asOffice />}
+    </>
+  )
 }
 
 /** Read-only view for offices (e.g. Controller of Examinations): shortage list across all courses. */
@@ -19,13 +33,31 @@ function AttendanceReport() {
   const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
   const rows = students.map((s) => ({ s, overall: attendanceStats(db, s.id), per: db.courses.filter((c) => c.studentIds.includes(s.id)).map((c) => ({ c, a: attendanceStats(db, s.id, c.id) })) }))
     .filter((r) => matches(term, r.s.name, r.s.rollNo, r.s.program, r.s.batch)).filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
+  const me = useCurrentUser()!
+  const canNotify = can(me, 'manageAttendance')
+  /** Warn students below the threshold (and their parents) course by course. */
+  const notifyShortage = () => {
+    let n = 0
+    for (const r of rows) {
+      const short = r.per.filter((x) => x.a.pct < threshold)
+      if (!short.length) continue
+      n++
+      const msg = `Attendance shortage: ${short.map((x) => `${x.c.code} ${x.a.pct}%`).join(', ')}. Minimum ${threshold}% is required for exams.`
+      notify([r.s.id, ...db.users.filter((u) => u.role === 'parent' && u.wardIds?.includes(r.s.id)).map((u) => u.id)], msg, '/attendance')
+    }
+    audit(me.id, 'ATTENDANCE_SHORTAGE_NOTICE', `${n} student(s) below ${threshold}%`)
+    alert(`Shortage notices sent to ${n} student(s) and their parents.`)
+  }
   const exportCsv = () => {
     const lines = [['Roll no', 'Name', 'Overall %', ...db.courses.map((c) => c.code)], ...rows.map((r) => [r.s.rollNo ?? '', r.s.name, String(r.overall.pct), ...db.courses.map((c) => String(r.per.find((x) => x.c.id === c.id)?.a.pct ?? ''))])]
     const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); el.download = 'attendance-shortage.csv'; el.click()
   }
   return (
     <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Attendance report" subtitle="Read-only. Faculty mark attendance; students below the threshold are not eligible for exams." actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Attendance report" subtitle="Read-only. Faculty mark attendance; students below the threshold are not eligible for exams." actions={<>
+        {canNotify && rows.some((r) => r.per.some((x) => x.a.pct < threshold)) && <button className="btn btn-outline" onClick={notifyShortage}><Bell size={14} /> Notify shortage</button>}
+        <button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>
+      </>} />
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
           <label className="row gap"><input type="checkbox" checked={onlyShort} onChange={(e) => setOnlyShort(e.target.checked)} /> Only students with a shortage</label>
@@ -108,10 +140,14 @@ function StudentAttendance() {
   )
 }
 
-function MarkAttendance() {
+function MarkAttendance({ asOffice = false }: { asOffice?: boolean }) {
   const db = useDB()
   const user = useCurrentUser()!
-  const courses = coursesFor(db, user)
+  const [classF, setClassF] = useState('all')
+  // Office: every live course (its class is in that semester); teachers: their own courses.
+  const courses = asOffice
+    ? db.courses.filter((c) => { const cl = db.classes.find((x) => x.id === c.classId); return cl && cl.semester === c.semester && (classF === 'all' || cl.id === classF) })
+    : coursesFor(db, user)
   const [courseId, setCourseId] = useState(courses[0]?.id ?? '')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const course = db.courses.find((c) => c.id === courseId)
@@ -133,6 +169,10 @@ function MarkAttendance() {
       if (ex) ex.present = [...present]
       else d.attendance.push({ id: uid('att'), courseId, date, present: [...present], markedBy: user.id })
     })
+    if (asOffice) {
+      audit(user.id, existing ? 'ATTENDANCE_CORRECT' : 'ATTENDANCE_MARK', `${course!.code} ${date}: ${present.size}/${course!.studentIds.length} present (on behalf of ${userName(db, course!.facultyId)})`)
+      notify([course!.facultyId], `Registrar of Evaluation ${existing ? 'corrected' : 'marked'} ${course!.code} attendance for ${fmtDate(date)}`, '/attendance')
+    }
     const absent = course!.studentIds.filter((s) => !present.has(s))
     if (absent.length) notify(absent, `Marked absent in ${course!.name} on ${fmtDate(date)}`, '/attendance')
     setSaved(true)
@@ -157,9 +197,10 @@ function MarkAttendance() {
 
   return (
     <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title="Mark attendance" subtitle="Select a course and date, then tap students to toggle" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Download report</button>} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search student or roll no.…' }} title={asOffice ? 'Mark or correct attendance' : 'Mark attendance'} subtitle={asOffice ? 'Any course, any date. Changes are logged and the teacher is notified.' : 'Select a course and date, then tap students to toggle'} actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Download report</button>} />
       <Card>
         <div className="row gap wrap">
+          {asOffice && <select className="select" style={{ maxWidth: 260 }} aria-label="Class" value={classF} onChange={(e) => { setClassF(e.target.value); const first = db.courses.find((c) => { const cl = db.classes.find((x) => x.id === c.classId); return cl && cl.semester === c.semester && (e.target.value === 'all' || cl.id === e.target.value) }); if (first) { setCourseId(first.id); reload(first.id, date) } }}><option value="all">All classes</option>{db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}</select>}
           <select className="select" style={{ maxWidth: 320 }} value={courseId} onChange={(e) => { setCourseId(e.target.value); reload(e.target.value, date) }}>
             {courses.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
           </select>

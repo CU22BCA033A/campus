@@ -9,7 +9,7 @@ const d = (offsetDays: number, hour = 10) => {
 }
 const iso = (offsetDays: number) => new Date(now + offsetDays * DAY).toISOString().slice(0, 10)
 
-type ErpPart = Pick<DB, 'hostels' | 'resultSheets' | 'services' | 'appointments' | 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
+type ErpPart = Pick<DB, 'nightAttendance' | 'hostels' | 'resultSheets' | 'services' | 'appointments' | 'applications' | 'scholarships' | 'exams' | 'results' | 'revaluations' | 'rooms' | 'hostelLeaves' | 'mealCoupons' | 'leaves' | 'payrollRuns' | 'purchaseRequests' | 'assets' | 'tickets' | 'drives' | 'books' | 'loans' | 'alumni' | 'refunds' | 'audit'>
 
 /** Extra users the ERP modules need (parent, librarian-style staff etc.). */
 export const parentUser: User = {
@@ -101,6 +101,10 @@ export function createErpSeed(): ErpPart {
       { id: 'rm5', hostelId: 'h-girls', block: 'Gargi Hostel (Girls)', number: 'B-202', capacity: 3, occupants: ['s4'], type: 'Non-AC', feePerSem: 38000 },
       { id: 'rm6', hostelId: 'h-girls', block: 'Gargi Hostel (Girls)', number: 'B-203', capacity: 2, occupants: [], type: 'AC', feePerSem: 55000 },
     ],
+    nightAttendance: [1, 2, 3].flatMap((back) => [
+      { id: `na-b-${back}`, hostelId: 'h-boys', date: iso(-back), present: back === 2 ? ['s1', 's3'] : ['s1', 's3', 's5'], onLeave: [], absent: back === 2 ? ['s5'] : [], remarks: (back === 2 ? { s5: 'Returned at 11:40 PM' } : {}) as Record<string, string>, markedBy: 'a11', at: d(-back, 22) },
+      { id: `na-g-${back}`, hostelId: 'h-girls', date: iso(-back), present: ['s2', 's4'], onLeave: [], absent: [], remarks: {}, markedBy: 'a12', at: d(-back, 22) },
+    ]),
     hostelLeaves: [
       { id: 'hl1', studentId: 's1', reason: 'Going home for the weekend', from: d(2, 17), to: d(4, 19), parentStatus: 'PENDING', wardenStatus: 'PENDING', createdAt: d(-0.2) },
     ],

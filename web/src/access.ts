@@ -81,6 +81,8 @@ const CAPS = {
   manageCourses: ['exam', 'super'],
   promoteStudents: ['exam', 'super'],
   manageResults: ['exam', 'super'],
+  manageTimetable: ['exam', 'super'],
+  manageAttendance: ['exam', 'super'], // mark/correct attendance for any course
   manageClubs: ['studentAffairs', 'super'],
   manageFees: ['finance', 'super'],
   manageHostel: ['hostel', 'super'],

@@ -4,7 +4,7 @@ import { BedDouble, Pencil, Plus, ScanLine, Utensils, Wand2 } from 'lucide-react
 import { hostelsForGender, isChiefWarden, managedHostels, waitingList } from '../hostels'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
-import { fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
+import { fmtDate, fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
 import type { MealCoupon } from '../data/types'
 
 const MEALS: MealCoupon['meal'][] = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
@@ -52,6 +52,7 @@ function StudentHostel() {
         <Stat label="Room" value={room.number} hint={`${room.block} · ${room.type}`} icon={<BedDouble size={22} />} />
         <Stat label="Room-mates" value={room.occupants.length - 1} hint={room.occupants.filter((o) => o !== user.id).map((o) => userName(db, o)).join(', ') || 'None'} tone="info" />
         <Stat label="Hostel fee / semester" value={inr(room.feePerSem)} tone="accent" />
+        {(() => { const nights = db.nightAttendance.filter((n) => n.hostelId === room.hostelId && (n.present.includes(user.id) || n.absent.includes(user.id) || n.onLeave.includes(user.id))); const abs = nights.filter((n) => n.absent.includes(user.id)); return <Stat label="Night roll calls" value={`${nights.length - abs.length}/${nights.length}`} hint={abs.length ? `Absent: ${abs.map((n) => fmtDate(n.date)).join(', ')}` : 'Present every night'} tone={abs.length ? 'danger' : 'success'} /> })()}
       </div>
       <div className="grid grid-2">
         <Card title="Leave requests" action={<span className="small muted">Parent approval → warden approval → gate pass</span>}>
@@ -99,7 +100,8 @@ function HostelAdmin() {
   const hostels = managedHostels(db, user)
   const chief = isChiefWarden(user)
   const [hostelId, setHostelId] = useState(hostels[0]?.id ?? '')
-  const [tab, setTab] = useState<'rooms' | 'waiting' | 'leaves' | 'mess' | 'hostels'>('rooms')
+  const [tab, setTab] = useState<'rooms' | 'night' | 'waiting' | 'leaves' | 'mess' | 'hostels'>('rooms')
+  const [renaming, setRenaming] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ ok: boolean; text: string } | null>(null)
   const [allotFor, setAllotFor] = useState<string | null>(null) // room id
@@ -184,7 +186,21 @@ function HostelAdmin() {
 
   return (
     <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search room or student…' }} title="Hostel & mess" subtitle={chief ? 'Chief Warden: all hostels, rooms, wardens and waiting lists' : `Warden · ${hostel.name}`} />
+      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search room or student…' }} title="Hostel & mess" subtitle={chief ? 'Chief Warden: all hostels, rooms, wardens and waiting lists' : `Warden · ${hostel.name}`}
+        actions={<button className="btn btn-outline" onClick={() => setRenaming(hostel.name)}><Pencil size={14} /> Rename hostel</button>} />
+      {renaming !== null && (
+        <Modal title={`Rename ${hostel.name}`} onClose={() => setRenaming(null)} footer={<><button className="btn btn-ghost" onClick={() => setRenaming(null)}>Cancel</button><button className="btn" onClick={() => {
+          const name = renaming.trim()
+          if (!name) return alert('Enter a name.')
+          if (db.hostels.some((h) => h.id !== hostel.id && h.name.toLowerCase() === name.toLowerCase())) return alert('Another hostel already has this name.')
+          update((d) => { d.hostels.find((h) => h.id === hostel.id)!.name = name; d.rooms.forEach((r) => { if (r.hostelId === hostel.id) r.block = name }) })
+          audit(user.id, 'HOSTEL_RENAME', `${hostel.name} → ${name}`)
+          notify([...rooms.flatMap((r) => r.occupants)], `Your hostel is now called ${name}`, '/hostel')
+          setRenaming(null)
+        }}>Save name</button></>}>
+          <Field label="Hostel name" hint={`For ${hostel.gender.toLowerCase()} · residents are notified of the new name`}><input className="input" autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} /></Field>
+        </Modal>
+      )}
       {hostels.length > 1 && <div className="row gap wrap">{hostels.map((h) => <button key={h.id} className={`chip ${h.id === hostel.id ? 'active' : ''}`} onClick={() => setHostelId(h.id)}>{h.name}</button>)}</div>}
       <div className="grid grid-4">
         <Stat label="Occupancy" value={`${occupied}/${beds}`} hint={`${beds - occupied} beds free · ${rooms.length} rooms`} icon={<BedDouble size={22} />} />
@@ -192,7 +208,7 @@ function HostelAdmin() {
         <Stat label="Awaiting warden" value={leaves.filter((l) => l.parentStatus === 'APPROVED' && l.wardenStatus === 'PENDING').length} tone="accent" />
         <Stat label="Warden" value={hostel.wardenId ? userName(db, hostel.wardenId).split(' (')[0] : 'Not assigned'} tone="info" />
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'rooms', label: 'Rooms' }, { id: 'waiting', label: 'Waiting list', count: waiting.length }, { id: 'leaves', label: 'Leave approvals' }, { id: 'mess', label: 'Mess counter' }, ...(chief ? [{ id: 'hostels' as const, label: 'Hostels & wardens', count: db.hostels.length }] : [])]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'rooms', label: 'Rooms' }, { id: 'night', label: 'Night attendance' }, { id: 'waiting', label: 'Waiting list', count: waiting.length }, { id: 'leaves', label: 'Leave approvals' }, { id: 'mess', label: 'Mess counter' }, ...(chief ? [{ id: 'hostels' as const, label: 'Hostels & wardens', count: db.hostels.length }] : [])]} />
       {tab === 'rooms' && (
         <>
           <div className="row between wrap gap">
@@ -217,6 +233,7 @@ function HostelAdmin() {
           </div>
         </>
       )}
+      {tab === 'night' && <NightRollCallPanel hostelId={hostel.id} term={term} />}
       {tab === 'waiting' && (
         <Card title={`${hostel.name}: students who opted for the hostel`} action={<span className="small muted">Set by the Admission department / Registrar</span>}>
           {waiting.length === 0 ? <Empty text="Everyone who opted for this hostel has a room." /> : (
@@ -307,5 +324,98 @@ function HostelAdmin() {
         </Modal>
       )}
     </>
+  )
+}
+
+/** Night roll call: residents are present, away on approved leave (auto-excused) or absent. */
+function NightRollCallPanel({ hostelId, term }: { hostelId: string; term: string }) {
+  const db = useDB()
+  const user = useCurrentUser()!
+  const [date, setDate] = useState(today())
+  const rooms = db.rooms.filter((r) => r.hostelId === hostelId)
+  const residents = rooms.flatMap((r) => r.occupants.map((o) => ({ id: o, room: r.number }))).filter((x) => db.users.find((u) => u.id === x.id)?.status === 'ACTIVE')
+  const record = db.nightAttendance.find((n) => n.hostelId === hostelId && n.date === date)
+  // A student is on leave tonight if an approved hostel leave covers 10 PM of the chosen date.
+  const night = new Date(`${date}T22:00`).getTime()
+  const onLeave = new Set(db.hostelLeaves.filter((l) => l.wardenStatus === 'APPROVED' && l.from <= night && l.to >= night).map((l) => l.studentId))
+  const init = () => Object.fromEntries(residents.map((r) => [r.id, onLeave.has(r.id) ? 'LEAVE' : record ? (record.absent.includes(r.id) ? 'ABSENT' : record.onLeave.includes(r.id) ? 'LEAVE' : 'PRESENT') : 'PRESENT'])) as Record<string, 'PRESENT' | 'ABSENT' | 'LEAVE'>
+  const [marks, setMarks] = useState(init)
+  const [remarks, setRemarks] = useState<Record<string, string>>(record?.remarks ?? {})
+  const [loadedFor, setLoadedFor] = useState(`${hostelId}|${date}|${record?.at ?? 0}`)
+  const key = `${hostelId}|${date}|${record?.at ?? 0}`
+  if (key !== loadedFor) { setLoadedFor(key); setMarks(init()); setRemarks(record?.remarks ?? {}) }
+
+  const counts = { PRESENT: 0, ABSENT: 0, LEAVE: 0 }
+  residents.forEach((r) => { counts[marks[r.id] ?? 'PRESENT']++ })
+  const save = () => {
+    const by = (st: string) => residents.filter((r) => (marks[r.id] ?? 'PRESENT') === st).map((r) => r.id)
+    const absent = by('ABSENT')
+    update((d) => {
+      const rec = { hostelId, date, present: by('PRESENT'), onLeave: by('LEAVE'), absent, remarks: Object.fromEntries(Object.entries(remarks).filter(([, v]) => v.trim())), markedBy: user.id, at: Date.now() }
+      const i = d.nightAttendance.findIndex((n) => n.hostelId === hostelId && n.date === date)
+      if (i >= 0) d.nightAttendance[i] = { ...d.nightAttendance[i], ...rec }
+      else d.nightAttendance.push({ id: uid('na'), ...rec })
+    })
+    for (const sid of absent) {
+      const st = db.users.find((u) => u.id === sid)!
+      const parents = db.users.filter((u) => u.role === 'parent' && u.wardIds?.includes(sid)).map((u) => u.id)
+      notify([sid, ...parents], `${st.name} was absent from the hostel at night roll call on ${fmtDate(date)}${remarks[sid] ? ` (${remarks[sid]})` : ''}`, '/hostel')
+    }
+    audit(user.id, 'HOSTEL_NIGHT_ROLL', `${db.hostels.find((h) => h.id === hostelId)?.name} ${date}: ${counts.PRESENT} in, ${counts.LEAVE} on leave, ${counts.ABSENT} absent`)
+  }
+  const last30 = db.nightAttendance.filter((n) => n.hostelId === hostelId && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10))
+  const absences = (sid: string) => last30.filter((n) => n.absent.includes(sid)).length
+
+  return (
+    <div className="stack">
+      <Card title="Night roll call" action={<input className="input" type="date" style={{ width: 170 }} max={today()} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Night of" />}>
+        <div className="row gap wrap small" style={{ marginBottom: 10 }}>
+          <Badge tone="success">{counts.PRESENT} in hostel</Badge><Badge tone="info">{counts.LEAVE} on leave</Badge><Badge tone="danger">{counts.ABSENT} absent</Badge>
+          {record ? <span className="muted">Saved {fmtDateTime(record.at)} by {userName(db, record.markedBy)}</span> : <Badge tone="warning">Not taken yet</Badge>}
+          <div className="grow" />
+          <button className="btn btn-ghost btn-sm" onClick={() => setMarks(Object.fromEntries(residents.map((r) => [r.id, onLeave.has(r.id) ? 'LEAVE' : 'PRESENT'])))}>All present</button>
+        </div>
+        {residents.length === 0 ? <Empty text="No residents in this hostel." /> : (
+          <div className="table-wrap"><table>
+            <thead><tr><th>Room</th><th>Student</th><th>Status</th><th>Remark</th><th>Absences (30 nights)</th></tr></thead>
+            <tbody>{residents.filter((r) => matches(term, r.room, userName(db, r.id), db.users.find((u) => u.id === r.id)?.rollNo)).sort((a, b) => a.room.localeCompare(b.room)).map((r) => {
+              const st = marks[r.id] ?? 'PRESENT'
+              return (
+                <tr key={r.id}>
+                  <td>{r.room}</td>
+                  <td>{userName(db, r.id)}<div className="small muted">{db.users.find((u) => u.id === r.id)?.rollNo}</div></td>
+                  <td>
+                    <div className="row gap">
+                      {(['PRESENT', 'ABSENT', 'LEAVE'] as const).map((v) => (
+                        <button key={v} className={`chip ${st === v ? 'active' : ''}`} disabled={v === 'LEAVE' && !onLeave.has(r.id) && st !== 'LEAVE'} title={v === 'LEAVE' && !onLeave.has(r.id) ? 'No approved leave for this night' : ''}
+                          aria-label={`${userName(db, r.id)} ${v.toLowerCase()}`} onClick={() => setMarks({ ...marks, [r.id]: v })}>
+                          {v === 'PRESENT' ? 'In' : v === 'ABSENT' ? 'Absent' : 'On leave'}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td><input className="input" style={{ minWidth: 150 }} placeholder={st === 'ABSENT' ? 'e.g. returned late' : ''} value={remarks[r.id] ?? ''} onChange={(e) => setRemarks({ ...remarks, [r.id]: e.target.value })} /></td>
+                  <td>{absences(r.id) ? <Badge tone={absences(r.id) >= 3 ? 'danger' : 'warning'}>{absences(r.id)}</Badge> : <span className="muted small">0</span>}</td>
+                </tr>
+              )
+            })}</tbody>
+          </table></div>
+        )}
+        <div className="row between" style={{ marginTop: 12 }}>
+          <span className="small muted">Students with approved leave for the night are marked "On leave" automatically. Parents of absent students are notified.</span>
+          <button className="btn" disabled={!residents.length} onClick={save}>{record ? 'Update roll call' : 'Save roll call'}</button>
+        </div>
+      </Card>
+      <Card title="Recent nights">
+        {db.nightAttendance.filter((n) => n.hostelId === hostelId).length === 0 ? <Empty text="No roll calls yet." /> : (
+          <div className="list">{[...db.nightAttendance].filter((n) => n.hostelId === hostelId).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14).map((n) => (
+            <button key={n.id} className="list-item" style={{ background: n.date === date ? 'var(--brand-light)' : 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', borderRadius: 8, padding: 10 }} onClick={() => setDate(n.date)}>
+              <div className="grow"><strong>{fmtDate(n.date)}</strong><div className="small muted">by {userName(db, n.markedBy)}</div></div>
+              <Badge tone="success">{n.present.length} in</Badge>{n.onLeave.length > 0 && <Badge tone="info">{n.onLeave.length} leave</Badge>}{n.absent.length > 0 && <Badge tone="danger">{n.absent.length} absent</Badge>}
+            </button>
+          ))}</div>
+        )}
+      </Card>
+    </div>
   )
 }

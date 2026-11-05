@@ -303,6 +303,7 @@ export interface DB {
   rooms: HostelRoom[]
   resultSheets: ResultSheet[]
   hostelLeaves: HostelLeave[]
+  nightAttendance: NightRollCall[]
   mealCoupons: MealCoupon[]
   leaves: StaffLeave[]
   payrollRuns: PayrollRun[]
@@ -627,4 +628,17 @@ export interface ResultSheet {
   submittedAt?: number
   publishedAt?: number
   publishedBy?: string
+}
+
+/** Night roll call in a hostel: who was in, who was away on approved leave, who was absent. */
+export interface NightRollCall {
+  id: string
+  hostelId: string
+  date: string // YYYY-MM-DD (the night of)
+  present: string[]
+  onLeave: string[]
+  absent: string[]
+  remarks: Record<string, string>
+  markedBy: string
+  at: number
 }
