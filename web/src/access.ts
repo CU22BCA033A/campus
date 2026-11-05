@@ -11,20 +11,23 @@ export type Persona = 'student' | 'faculty' | 'parent' | Office
 
 export const OFFICES: Record<Office, { label: string; description: string }> = {
   super: { label: 'System Administrator', description: 'Full access to every module, user management and the audit log' },
-  registrar: { label: 'Registrar Office', description: 'Admissions, student records, academic structure, certificates and grievances' },
+  registrar: { label: 'Registrar Office', description: 'Student records, admissions oversight, certificates and institutional reports' },
+  admissions: { label: 'Admission Department', description: 'Applications, merit lists, offers, admitting students and their profiles' },
   finance: { label: 'Finance & Accounts', description: 'Fee collection, scholarships, refunds, purchase approvals and assets' },
   hostel: { label: 'Hostel Warden', description: 'Rooms, allocation, leave approvals, gate passes and the mess' },
   hr: { label: 'Human Resources', description: 'Staff records, leave approvals and payroll' },
-  exam: { label: 'Controller of Examinations', description: 'Exam schedule, eligibility, seating, results and re-evaluation' },
+  exam: { label: 'Registrar of Evaluation', description: 'Classes, courses and teacher allocation, examinations, results and semester promotion' },
   library: { label: 'Library', description: 'Catalogue, issue and return, reservations and fines' },
   placement: { label: 'Placement Cell', description: 'Recruiter drives, applications, interviews and alumni' },
+  studentAffairs: { label: 'Office of Student Affairs', description: 'Clubs and chapters, campus events, polls and student grievances' },
 }
 
 export const persona = (u: User): Persona => (u.role === 'admin' ? (u.office ?? 'super') : u.role)
 export const personaLabel = (u: User) => (u.role === 'admin' ? OFFICES[u.office ?? 'super'].label : u.role[0].toUpperCase() + u.role.slice(1))
 
-const ALL: Persona[] = ['student', 'faculty', 'parent', 'super', 'registrar', 'finance', 'hostel', 'hr', 'exam', 'library', 'placement']
-const STAFF: Persona[] = ['faculty', 'super', 'registrar', 'finance', 'hostel', 'hr', 'exam', 'library', 'placement']
+const ALL: Persona[] = ['student', 'faculty', 'parent', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs']
+const STAFF: Persona[] = ['faculty', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs']
+const STUDENT_RECORDS: Persona[] = ['registrar', 'admissions', 'exam', 'super']
 const LEARNING: Persona[] = ['student', 'faculty', 'super']
 
 /** Which personas may open each page. */
@@ -35,7 +38,9 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/help': ALL,
   '/profile': ALL,
   '/timetable': ['student', 'faculty', 'registrar', 'exam', 'super'],
-  '/courses': ['student', 'faculty', 'registrar', 'super'],
+  '/courses': ['student', 'faculty', 'registrar', 'exam', 'super'],
+  '/classes': STUDENT_RECORDS,
+  '/people': STAFF,
   '/assignments': LEARNING,
   '/quizzes': LEARNING,
   '/attendance': ['student', 'faculty', 'exam', 'super'],
@@ -43,9 +48,9 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/grades': ['student', 'faculty', 'exam', 'super'],
   '/feedback': ['student', 'faculty', 'registrar', 'super'],
   '/library': ['student', 'faculty', 'library', 'super'],
-  '/feed': LEARNING,
-  '/clubs': ['student', 'faculty', 'super'],
-  '/polls': ['student', 'faculty', 'registrar', 'super'],
+  '/feed': ['student', 'faculty', 'studentAffairs', 'super'],
+  '/clubs': ['student', 'faculty', 'studentAffairs', 'super'],
+  '/polls': ['student', 'faculty', 'registrar', 'studentAffairs', 'super'],
   '/placements': ['student', 'placement', 'super'],
   '/alumni': ['student', 'faculty', 'placement', 'super'],
   '/fees': ['student', 'finance', 'super'],
@@ -55,8 +60,8 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/venues': ['faculty', 'registrar', 'super'],
   '/hr': STAFF, // everyone on staff applies for leave and sees payslips; approvals/payroll are capabilities
   '/procurement': ['faculty', 'finance', 'registrar', 'super'],
-  '/admissions': ['registrar', 'super'],
-  '/admin/users': ['registrar', 'hr', 'super'],
+  '/admissions': ['admissions', 'registrar', 'super'],
+  '/admin/users': ['registrar', 'admissions', 'exam', 'hr', 'super'],
   '/admin/reports': ['registrar', 'finance', 'super'],
   '/admin/audit': ['super'],
 }
@@ -68,7 +73,13 @@ export function canAccess(u: User, path: string) {
 
 /** Fine-grained actions inside pages. */
 const CAPS = {
-  manageAdmissions: ['registrar', 'super'],
+  manageAdmissions: ['admissions', 'registrar', 'super'],
+  editStudentProfiles: STUDENT_RECORDS,
+  manageClasses: ['exam', 'super'],
+  manageCourses: ['exam', 'super'],
+  promoteStudents: ['exam', 'super'],
+  manageResults: ['exam', 'super'],
+  manageClubs: ['studentAffairs', 'super'],
   manageFees: ['finance', 'super'],
   manageHostel: ['hostel', 'super'],
   approveGatePass: ['faculty', 'hostel', 'super'],
@@ -84,20 +95,21 @@ const CAPS = {
   manageAlumni: ['placement', 'super'],
   postNotices: STAFF,
   createEvents: STAFF,
-  createPolls: ['faculty', 'registrar', 'super'],
+  createPolls: ['faculty', 'registrar', 'studentAffairs', 'super'],
   bookVenues: ['faculty', 'registrar', 'super'],
   manageAllBookings: ['registrar', 'super'],
   moderateNotices: ['registrar', 'super'],
-  manageStudents: ['registrar', 'super'],
+  manageStudents: ['registrar', 'admissions', 'super'], // create, deactivate, reset passwords
   manageStaff: ['hr', 'super'],
   viewAllCourses: ['registrar', 'exam', 'super'],
+  viewPeople: STAFF,
 } satisfies Record<string, Persona[]>
 export type Capability = keyof typeof CAPS
 export const can = (u: User, cap: Capability) => (CAPS[cap] as Persona[]).includes(persona(u))
 
 /** Help Center routing: which office handles each request category. */
 export const TICKET_OFFICE: Record<DB['tickets'][number]['category'], Office> = {
-  Grievance: 'registrar',
+  Grievance: 'studentAffairs',
   'Bonafide Certificate': 'registrar',
   'Facility Booking': 'registrar',
   'No-Dues Certificate': 'finance',

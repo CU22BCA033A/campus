@@ -64,12 +64,19 @@ export function createErpSeed(): ErpPart {
       { id: 'ex2', courseId: 'c2', title: 'Mid-Semester Examination', date: iso(-9), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 75, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
       { id: 'ex3', courseId: 'c1', title: 'End Semester Examination', date: iso(12), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'RELATIVE' },
       { id: 'ex4', courseId: 'c2', title: 'End Semester Examination', date: iso(14), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE' },
+      { id: 'ex6', courseId: 'c8', title: 'End Semester Examination', date: iso(-8), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
+      { id: 'ex7', courseId: 'c9', title: 'End Semester Examination', date: iso(-6), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE' },
       { id: 'ex5', courseId: 'c3', title: 'End Semester Examination', date: iso(16), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE' },
     ],
-    results: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's13'].flatMap((sid, i) => [
+    results: [
+      ...['s19', 's20', 's21', 's22'].flatMap((sid, i) => [
+        { id: `r-ex6-${sid}`, examId: 'ex6', studentId: sid, marks: [78, 64, 35, 88][i] },
+        { id: `r-ex7-${sid}`, examId: 'ex7', studentId: sid, marks: [82, 71, 58, 91][i] },
+      ]),
+      ...['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's13'].flatMap((sid, i) => [
       { id: `r-ex1-${sid}`, examId: 'ex1', studentId: sid, marks: 22 + ((i * 7) % 27) },
       { id: `r-ex2-${sid}`, examId: 'ex2', studentId: sid, marks: 19 + ((i * 11) % 30) },
-    ]),
+    ])],
     revaluations: [],
     rooms: [
       { id: 'rm1', block: 'A (Boys)', number: 'A-101', capacity: 2, occupants: ['s1'], type: 'AC', feePerSem: 55000 },

@@ -12,6 +12,8 @@ function load(): DB {
       // Migrate older saved data: add any collections introduced since it was saved.
       const saved = JSON.parse(raw) as DB
       const fresh = createSeed()
+      // Version 3 restructured students into classes; older demo data is replaced rather than patched.
+      if ((saved.version ?? 1) < 3) return fresh
       for (const k of Object.keys(fresh) as (keyof DB)[]) {
         if (saved[k] === undefined) (saved as unknown as Record<string, unknown>)[k] = fresh[k]
       }

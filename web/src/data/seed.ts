@@ -33,12 +33,25 @@ const students: User[] = firstNames.map((f, i) => ({
   avatarColor: colors[i % colors.length],
   cgpa: [8.42, 7.9, 6.8, 8.9, 7.2, 9.1, 6.2, 8.1, 7.5, 8.6, 5.9, 7.0][i],
   backlogs: [0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0][i],
+  classId: 'cls-bca-2024-a',
+  batch: 2024,
 }))
+
+/** Two more classes so students can be grouped: BCA 2025 (Sem 3) and BBA 2024 (Sem 5). */
+const more = (prefix: string, startId: number, names: string[], cls: string, program: string, batch: number, semester: number, dept: string): User[] =>
+  names.map((n, i) => ({
+    id: `s${startId + i}`, name: n, email: `${n.toLowerCase().replace(/ /g, '.')}@campus.edu`, password: 'student123', role: 'student', status: 'ACTIVE',
+    department: dept, rollNo: `${prefix}${String(i + 1).padStart(3, '0')}`, program, semester, section: 'A', phone: `9741${String(100000 + i * 731).slice(0, 6)}`,
+    firstLogin: false, credentialsMismatchCount: 0, avatarColor: colors[(i + startId) % colors.length], cgpa: [8.1, 7.4, 6.9, 8.7, 7.8][i] ?? 7.5, backlogs: [0, 0, 1, 0, 0][i] ?? 0, classId: cls, batch,
+  }))
+const bca2025 = more('23BCA', 14, ['Neha Bhatt', 'Siddharth Jain', 'Pranav Hegde', 'Lavanya Gowda', 'Yash Agarwal'], 'cls-bca-2025-a', 'BCA', 2025, 3, 'Computer Applications')
+const bba2024 = more('22BBA', 19, ['Riddhi Mehta', 'Karan Malhotra', 'Aisha Khan', 'Varun Shenoy'], 'cls-bba-2024-a', 'BBA', 2024, 5, 'Management')
 
 const faculty: User[] = [
   { id: 'f1', name: 'Dr. Priya Raghavan', email: 'faculty@campus.edu', department: 'Computer Applications' },
   { id: 'f2', name: 'Prof. Sanjay Hegde', email: 'sanjay.hegde@campus.edu', department: 'Computer Applications' },
   { id: 'f3', name: 'Dr. Lakshmi Narayan', email: 'lakshmi.narayan@campus.edu', department: 'Mathematics' },
+  { id: 'f4', name: 'Prof. Meena Kulkarni', email: 'meena.kulkarni@campus.edu', department: 'Management' },
 ].map((f, i) => ({
   ...f,
   password: 'faculty123',
@@ -48,7 +61,7 @@ const faculty: User[] = [
   firstLogin: false,
   credentialsMismatchCount: 0,
   avatarColor: colors[(i + 3) % colors.length],
-  basicSalary: [95000, 72000, 88000][i],
+  basicSalary: [95000, 72000, 88000, 78000][i],
 }))
 
 const admin: User = {
@@ -77,19 +90,31 @@ const newStudent: User = {
   firstLogin: true,
 }
 
-const allStudentIds = [...students.map((s) => s.id), newStudent.id]
+const bca2024Ids = [...students.map((s) => s.id), 's13']
+const bca2025Ids = bca2025.map((s) => s.id)
+const bba2024Ids = bba2024.map((s) => s.id)
+const allStudentIds = [...bca2024Ids, ...bca2025Ids, ...bba2024Ids]
 
 export function createSeed(): DB {
   return {
-    version: 2,
-    users: [...students, newStudent, ...faculty, admin, ...officeStaff, parentUser],
+    version: 3,
+    users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser],
+    classes: [
+      { id: 'cls-bca-2024-a', program: 'BCA', batch: 2024, section: 'A', semester: 5, maxSemesters: 6, mentorId: 'f1' },
+      { id: 'cls-bca-2025-a', program: 'BCA', batch: 2025, section: 'A', semester: 3, maxSemesters: 6, mentorId: 'f2' },
+      { id: 'cls-bba-2024-a', program: 'BBA', batch: 2024, section: 'A', semester: 5, maxSemesters: 6, mentorId: 'f4' },
+    ],
     ...createErpSeed(),
     courses: [
-      { id: 'c1', code: 'BCA501', name: 'Web Technologies', facultyId: 'f1', credits: 4, semester: 5, description: 'HTML, CSS, JavaScript, React and REST APIs for modern web applications.', studentIds: allStudentIds },
-      { id: 'c2', code: 'BCA502', name: 'Database Management Systems', facultyId: 'f2', credits: 4, semester: 5, description: 'Relational model, SQL, normalisation, transactions and indexing.', studentIds: allStudentIds },
-      { id: 'c3', code: 'BCA503', name: 'Operating Systems', facultyId: 'f2', credits: 3, semester: 5, description: 'Processes, scheduling, memory management and file systems.', studentIds: allStudentIds },
-      { id: 'c4', code: 'MAT501', name: 'Discrete Mathematics', facultyId: 'f3', credits: 3, semester: 5, description: 'Logic, sets, relations, graphs and combinatorics.', studentIds: allStudentIds },
-      { id: 'c5', code: 'BCA504', name: 'Software Engineering', facultyId: 'f1', credits: 3, semester: 5, description: 'SDLC, requirements, design, testing and project management.', studentIds: allStudentIds },
+      { id: 'c1', code: 'BCA501', name: 'Web Technologies', facultyId: 'f1', credits: 4, semester: 5, description: 'HTML, CSS, JavaScript, React and REST APIs for modern web applications.', studentIds: bca2024Ids, classId: 'cls-bca-2024-a' },
+      { id: 'c2', code: 'BCA502', name: 'Database Management Systems', facultyId: 'f2', credits: 4, semester: 5, description: 'Relational model, SQL, normalisation, transactions and indexing.', studentIds: bca2024Ids, classId: 'cls-bca-2024-a' },
+      { id: 'c3', code: 'BCA503', name: 'Operating Systems', facultyId: 'f2', credits: 3, semester: 5, description: 'Processes, scheduling, memory management and file systems.', studentIds: bca2024Ids, classId: 'cls-bca-2024-a' },
+      { id: 'c4', code: 'MAT501', name: 'Discrete Mathematics', facultyId: 'f3', credits: 3, semester: 5, description: 'Logic, sets, relations, graphs and combinatorics.', studentIds: bca2024Ids, classId: 'cls-bca-2024-a' },
+      { id: 'c5', code: 'BCA504', name: 'Software Engineering', facultyId: 'f1', credits: 3, semester: 5, description: 'SDLC, requirements, design, testing and project management.', studentIds: bca2024Ids, classId: 'cls-bca-2024-a' },
+      { id: 'c6', code: 'BCA301', name: 'Data Structures', facultyId: 'f1', credits: 4, semester: 3, description: 'Arrays, linked lists, stacks, queues, trees, graphs and hashing.', studentIds: bca2025Ids, classId: 'cls-bca-2025-a' },
+      { id: 'c7', code: 'BCA302', name: 'Computer Networks', facultyId: 'f2', credits: 4, semester: 3, description: 'OSI and TCP/IP models, routing, transport protocols and network security.', studentIds: bca2025Ids, classId: 'cls-bca-2025-a' },
+      { id: 'c8', code: 'BBA501', name: 'Marketing Management', facultyId: 'f4', credits: 4, semester: 5, description: 'Marketing mix, consumer behaviour, branding and digital marketing.', studentIds: bba2024Ids, classId: 'cls-bba-2024-a' },
+      { id: 'c9', code: 'BBA502', name: 'Financial Accounting', facultyId: 'f4', credits: 4, semester: 5, description: 'Accounting principles, journals, ledgers and financial statements.', studentIds: bba2024Ids, classId: 'cls-bba-2024-a' },
     ],
     materials: [
       { id: 'm1', courseId: 'c1', title: 'Unit 1 – HTML & CSS fundamentals', kind: 'slides', url: '#', postedAt: d(-20) },
@@ -141,6 +166,11 @@ export function createSeed(): DB {
       { id: 't11', courseId: 'c5', day: 5, start: '09:00', end: '10:00', room: 'LH-202' },
       { id: 't12', courseId: 'c1', day: 5, start: '10:15', end: '11:15', room: 'LH-201' },
       { id: 't13', courseId: 'c3', day: 6, start: '09:00', end: '10:00', room: 'LH-202' },
+      { id: 't14', courseId: 'c6', day: 1, start: '09:00', end: '10:00', room: 'LH-301' },
+      { id: 't15', courseId: 'c7', day: 2, start: '10:15', end: '11:15', room: 'LH-301' },
+      { id: 't16', courseId: 'c6', day: 4, start: '11:30', end: '12:30', room: 'Lab-1' },
+      { id: 't17', courseId: 'c8', day: 1, start: '10:15', end: '11:15', room: 'MB-101' },
+      { id: 't18', courseId: 'c9', day: 3, start: '09:00', end: '10:00', room: 'MB-101' },
     ],
     attendance: (() => {
       const recs = []
@@ -149,9 +179,9 @@ export function createSeed(): DB {
         const date = new Date(now - back * DAY)
         const day = date.getDay()
         if (day === 0) continue
-        for (const c of ['c1', 'c2', 'c3', 'c4', 'c5']) {
+        for (const [c, ids] of [['c1', bca2024Ids], ['c2', bca2024Ids], ['c3', bca2024Ids], ['c4', bca2024Ids], ['c5', bca2024Ids], ['c6', bca2025Ids], ['c7', bca2025Ids], ['c8', bba2024Ids], ['c9', bba2024Ids]] as const) {
           if ((back + c.charCodeAt(1)) % 3 === 0) continue
-          const present = allStudentIds.filter((_sid, i) => (i * 7 + back * 3 + c.charCodeAt(1) * (i % 3 + 1)) % 5 !== 0)
+          const present = ids.filter((_sid, i) => (i * 7 + back * 3 + c.charCodeAt(1) * (i % 3 + 1)) % 5 !== 0)
           recs.push({ id: `att${++n}`, courseId: c, date: iso(-back), present, markedBy: 'f1' })
         }
       }

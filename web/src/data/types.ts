@@ -1,5 +1,5 @@
 export type Role = 'student' | 'faculty' | 'admin' | 'parent'
-export type Office = 'super' | 'registrar' | 'finance' | 'hostel' | 'hr' | 'exam' | 'library' | 'placement'
+export type Office = 'super' | 'registrar' | 'admissions' | 'exam' | 'finance' | 'hostel' | 'hr' | 'library' | 'placement' | 'studentAffairs'
 export type AccountStatus = 'ACTIVE' | 'DEACTIVATED' | 'LOCKED'
 
 export interface User {
@@ -19,6 +19,8 @@ export interface User {
   credentialsMismatchCount: number
   lockedAtTime?: number
   avatarColor: string
+  classId?: string // students: their class
+  batch?: number // students: admission year
   office?: Office // admin accounts: the office they work in (defaults to 'super')
   wardIds?: string[] // parent accounts: children at this institution
   cgpa?: number
@@ -35,7 +37,20 @@ export interface Course {
   credits: number
   semester: number
   description: string
-  studentIds: string[]
+  studentIds: string[] // kept in sync with the class roster while the class is in this course's semester
+  classId?: string // the class (batch + section) this course is offered to
+}
+
+/** A class: one programme, admission batch and section, currently in `semester`. */
+export interface ClassGroup {
+  id: string
+  program: string
+  batch: number // admission year
+  section: string
+  semester: number
+  maxSemesters: number
+  mentorId?: string // faculty mentor / class teacher
+  promotedAt?: number
 }
 
 export interface Material {
@@ -223,6 +238,7 @@ export interface Notification {
 export interface DB {
   version: number
   users: User[]
+  classes: ClassGroup[]
   courses: Course[]
   materials: Material[]
   assignments: Assignment[]
