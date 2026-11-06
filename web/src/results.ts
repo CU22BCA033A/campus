@@ -5,6 +5,10 @@
 import type { DB, InternalComponent, ResultSheet, User } from './data/types'
 import { gradeFor, registerSheetInternal } from './lib'
 
+/** General ratio: internal 60, external 40 (the Registrar of Evaluation can change it per exam). */
+export const DEFAULT_INTERNAL = 60
+export const DEFAULT_EXTERNAL = 40
+
 export const compKey = (c: InternalComponent) => `${c.kind}:${c.id}`
 const r1 = (n: number) => Math.round(n * 10) / 10
 
@@ -139,7 +143,7 @@ export function publishSheet(d: DB, sheetId: string, actorId: string) {
 
 /** Default sheet for a course offering. */
 export function newSheet(courseId: string, semester: number, evaluatorId: string, examId?: string, term: ResultSheet['term'] = 'Regular'): ResultSheet {
-  return { id: `rs-${courseId}-${term === 'Regular' ? `s${semester}` : `sup${Date.now().toString(36)}`}`, courseId, semester, term, internalMax: 40, externalMax: 60, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components: [], examId, evaluatorId, extraStudentIds: [], overrides: {}, status: 'DRAFT' }
+  return { id: `rs-${courseId}-${term === 'Regular' ? `s${semester}` : `sup${Date.now().toString(36)}`}`, courseId, semester, term, internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components: [], examId, evaluatorId, extraStudentIds: [], overrides: {}, status: 'DRAFT' }
 }
 
 registerSheetInternal((db, sh, sid) => sheetRows(db, sh).find((r) => r.student.id === sid)?.internal)

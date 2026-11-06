@@ -114,7 +114,7 @@ function priorFor(u: User): NonNullable<User['priorRecord']> {
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 7,
+    version: 8,
     examSessions: [],
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [

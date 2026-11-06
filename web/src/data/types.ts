@@ -386,6 +386,8 @@ export interface ExamSession {
   minAttendance: number
   requireFeesCleared: boolean
   grading: 'ABSOLUTE' | 'RELATIVE'
+  internalMax?: number // marks split for every subject's result sheet (default 60 / 40)
+  externalMax?: number
   createdAt: number
 }
 export interface ExamResult {

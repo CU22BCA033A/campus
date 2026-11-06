@@ -16,6 +16,15 @@ function load(): DB {
       const fresh = createSeed()
       // Version 3 restructured students into classes; older demo data is replaced rather than patched.
       if ((saved.version ?? 1) < 3) return fresh
+      if (saved.version < 8) {
+        // Version 8: general ratio internal 60 / external 40 for sheets not yet published.
+        for (const sh of saved.resultSheets ?? []) {
+          if (sh.status === 'PUBLISHED' || sh.internalMax !== 40 || sh.externalMax !== 60) continue
+          sh.internalMax = 60; sh.externalMax = 40
+          for (const o of Object.values(sh.overrides)) if (o.internal !== undefined) o.internal = Math.round(o.internal * 1.5 * 10) / 10
+        }
+        for (const s of saved.examSessions ?? []) { s.internalMax ??= 60; s.externalMax ??= 40 }
+      }
       if (saved.version < 7) {
         // Version 7: CGPA/backlogs are derived; keep earlier semesters as a prior record.
         for (const u of saved.users) {

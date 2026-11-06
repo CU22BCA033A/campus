@@ -48,7 +48,7 @@ export const officeStaff: User[] = [
 ]
 
 const sheet = (id: string, courseId: string, semester: number, examId: string | undefined, evaluatorId: string, components: DB['resultSheets'][number]['components'], status: DB['resultSheets'][number]['status'] = 'DRAFT', overrides: DB['resultSheets'][number]['overrides'] = {}): DB['resultSheets'][number] => ({
-  id, courseId, semester, term: 'Regular', internalMax: 40, externalMax: 60, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components, examId, evaluatorId,
+  id, courseId, semester, term: 'Regular', internalMax: 60, externalMax: 40, scaleInternals: true, minExternalPct: 35, minTotalPct: 40, components, examId, evaluatorId,
   extraStudentIds: [], overrides, status, ...(status === 'PUBLISHED' ? { submittedAt: d(-4), publishedAt: d(-3), publishedBy: 'a6' } : {}),
 })
 
@@ -162,8 +162,8 @@ export function createErpSeed(): ErpPart {
       sheet('rs-c3', 'c3', 5, 'ex5', 'f2', [{ kind: 'assignment', id: 'as3' }]),
       sheet('rs-c4', 'c4', 5, 'ex8', 'f3', []),
       sheet('rs-c5', 'c5', 5, 'ex9', 'f1', []),
-      sheet('rs-c8', 'c8', 5, 'ex6', 'f4', [], 'PUBLISHED', { s19: { internal: 32 }, s20: { internal: 28 }, s21: { internal: 18 }, s22: { internal: 36 } }),
-      sheet('rs-c9', 'c9', 5, 'ex7', 'f4', [], 'PUBLISHED', { s19: { internal: 34 }, s20: { internal: 30 }, s21: { internal: 26 }, s22: { internal: 37 } }),
+      sheet('rs-c8', 'c8', 5, 'ex6', 'f4', [], 'PUBLISHED', { s19: { internal: 48 }, s20: { internal: 42 }, s21: { internal: 24 }, s22: { internal: 54 } }),
+      sheet('rs-c9', 'c9', 5, 'ex7', 'f4', [], 'PUBLISHED', { s19: { internal: 51 }, s20: { internal: 45 }, s21: { internal: 39 }, s22: { internal: 56 } }),
     ],
     services: [
       { id: 'sv1', title: 'Counselling Centre appointment', description: 'Confidential one-to-one session with a qualified counsellor for stress, anxiety, relationships or anything on your mind.', office: 'studentAffairs', category: 'Wellbeing', mode: 'In person or online', location: 'Wellness Centre, Block C', durationMin: 45, slots: [1, 2, 3, 4, 5].flatMap((day) => [{ day, start: '10:00' }, { day, start: '14:00' }, { day, start: '16:00' }]), maxPerSlot: 1, confidential: true, active: true, createdBy: 'a9' },

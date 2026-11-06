@@ -110,7 +110,9 @@ copy, so the student, parent, teacher, office and placement pages always agree.
 The Registrar of Evaluation creates **one exam** for a class (e.g. *End Semester Examination
 – Nov 2026*) and adds the class's subjects to it as papers, each with its own date, time,
 maximum marks and evaluator ("Fill dates" spaces them out, skipping Sundays; overlapping
-papers are flagged). Eligibility rules and grading are set once per exam and apply to every
+papers are flagged). The exam also sets the **internal / external maximum marks** for its
+subjects' result sheets (general ratio **internal 60 + external 40**); each paper's own marks
+are scaled to the external maximum. Changing the split later updates unpublished subjects only. Eligibility rules and grading are set once per exam and apply to every
 subject. Subjects can be added, edited or removed later; seating and invigilators can be
 generated for all subjects at once; students see their schedule grouped by exam and get one
 hall ticket per exam. End-semester subjects get result sheets automatically; other exams
@@ -124,7 +126,8 @@ semester's exams for a class in one go and allots an evaluator (professor) per c
 sets up sheets directly. On the sheet:
 
 - **Internal**: tick the assignments, quizzes and tests that count; each becomes a column and
-  together they make the internal mark (scaled to the internal maximum, or added and capped).
+  together they make the internal mark (scaled to the internal maximum, or added and capped). Maxima come from the exam (default
+  internal 60, external 40) and can be adjusted per course.
 - **External**: the evaluator enters the end-semester exam marks, scaled to the external maximum.
 - **Final** = internal + external → grade; pass needs the minimum external % and total %.
 - Internal/external maxima, pass rules, the internals selection and any single cell can be

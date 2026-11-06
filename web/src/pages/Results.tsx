@@ -6,7 +6,7 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, SearchBox, Stat, Tabs } f
 import { can, officeUsers } from '../access'
 import { classCourses, classLabel, classStudents } from '../classes'
 import { fmtDate, fmtDateTime, matches, userName } from '../lib'
-import { availableComponents, compKey, componentInfo, newSheet, publishSheet, sheetFor, sheetProgress, sheetRows } from '../results'
+import { availableComponents, compKey, componentInfo, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet, publishSheet, sheetFor, sheetProgress, sheetRows } from '../results'
 import type { ResultSheet } from '../data/types'
 
 const statusTone = (s: ResultSheet['status']) => (s === 'PUBLISHED' ? 'success' : s === 'SUBMITTED' ? 'info' : 'warning')
@@ -182,7 +182,7 @@ function BacklogRegistration({ q, onOpen }: { q: string; onOpen: (id: string) =>
         const regular = d.resultSheets.find((s) => s.courseId === courseId && s.term === 'Regular')
         const date = new Date(Date.now() + 21 * 86_400_000).toISOString().slice(0, 10)
         d.exams.push({ id: examId, courseId, title: 'Supplementary Examination', date, start: '14:00', end: '17:00', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: regular?.evaluatorId ?? c.facultyId, kind: 'Supplementary' })
-        sh = { ...newSheet(courseId, c.semester, regular?.evaluatorId ?? c.facultyId, examId, 'Supplementary'), components: regular?.components ?? [], internalMax: regular?.internalMax ?? 40, externalMax: regular?.externalMax ?? 60 }
+        sh = { ...newSheet(courseId, c.semester, regular?.evaluatorId ?? c.facultyId, examId, 'Supplementary'), components: regular?.components ?? [], internalMax: regular?.internalMax ?? DEFAULT_INTERNAL, externalMax: regular?.externalMax ?? DEFAULT_EXTERNAL }
         // Internals carry over from the regular attempt unless the office edits them.
         const prev = regular ? sheetRows(d, regular).find((r) => r.student.id === studentId) : undefined
         if (prev) sh.overrides[studentId] = { internal: prev.internal }

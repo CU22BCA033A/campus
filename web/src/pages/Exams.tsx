@@ -8,7 +8,7 @@ import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { classCourses, classLabel } from '../classes'
 import { courseName, coursesFor, examEligibility, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
-import { availableComponents, newSheet } from '../results'
+import { availableComponents, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet } from '../results'
 import { Link } from 'react-router-dom'
 import type { DB, Exam, ExamKind } from '../data/types'
 
@@ -177,7 +177,7 @@ function ExamAdmin() {
   const [seatingFor, setSeatingFor] = useState<Exam | null>(null)
   const [eligFor, setEligFor] = useState<Exam | null>(null)
   const [marks, setMarks] = useState<Record<string, string>>({})
-  const [creating, setCreating] = useState<{ id?: string; title: string; kind: ExamKind; classId: string; minAttendance: number; requireFeesCleared: boolean; grading: Exam['grading']; firstDate: string; gap: number; papers: PaperDraft[] } | null>(null)
+  const [creating, setCreating] = useState<{ id?: string; title: string; kind: ExamKind; classId: string; minAttendance: number; requireFeesCleared: boolean; grading: Exam['grading']; internalMax: number; externalMax: number; firstDate: string; gap: number; papers: PaperDraft[] } | null>(null)
   const [paperEdit, setPaperEdit] = useState<{ sessionId: string; examId?: string; courseId: string; date: string; start: string; end: string; maxMarks: number; evaluatorId: string } | null>(null)
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
 
@@ -197,7 +197,7 @@ function ExamAdmin() {
     const cls = db.classes.find((c) => c.id === classId)
     return (cls ? classCourses(db, cls) : []).map((c) => ({ courseId: c.id, include: true, date: '', start: kind === 'End Semester' ? '09:30' : '10:00', end: kind === 'End Semester' ? '12:30' : '11:30', maxMarks: kind === 'End Semester' ? 100 : 50, evaluatorId: c.facultyId }))
   }
-  const startCreate = () => { const c = db.classes[0]; setCreating({ title: defaultTitle('End Semester'), kind: 'End Semester', classId: c.id, minAttendance: 75, requireFeesCleared: true, grading: 'ABSOLUTE', firstDate: '', gap: 2, papers: draftFor(c.id, 'End Semester') }) }
+  const startCreate = () => { const c = db.classes[0]; setCreating({ title: defaultTitle('End Semester'), kind: 'End Semester', classId: c.id, minAttendance: 75, requireFeesCleared: true, grading: 'ABSOLUTE', internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL, firstDate: '', gap: 2, papers: draftFor(c.id, 'End Semester') }) }
   const autoDates = () => {
     if (!creating?.firstDate) return alert('Choose the first paper date.')
     let i = 0
@@ -208,16 +208,17 @@ function ExamAdmin() {
       return { ...p, date: dt.toISOString().slice(0, 10) }
     }) })
   }
-  const linkSheet = (d: DB, examId: string, courseId: string, evaluatorId: string) => {
+  const linkSheet = (d: DB, examId: string, courseId: string, evaluatorId: string, split: { internalMax: number; externalMax: number }) => {
     const course = d.courses.find((c) => c.id === courseId)!
     const sh = d.resultSheets.find((x) => x.courseId === courseId && x.semester === course.semester && x.term === 'Regular')
-    if (sh) { sh.examId = examId; sh.evaluatorId = evaluatorId }
-    else d.resultSheets.push({ ...newSheet(courseId, course.semester, evaluatorId, examId), components: availableComponents(d, courseId, examId).filter((x) => x.kind !== 'quiz') })
+    if (sh) { sh.examId = examId; sh.evaluatorId = evaluatorId; if (sh.status !== 'PUBLISHED') Object.assign(sh, split) }
+    else d.resultSheets.push({ ...newSheet(courseId, course.semester, evaluatorId, examId), ...split, components: availableComponents(d, courseId, examId).filter((x) => x.kind !== 'quiz') })
   }
   const saveExam = () => {
     const c = creating!
     const chosen = c.papers.filter((p) => p.include)
     if (!c.title.trim()) return alert('Give the exam a name.')
+    if (c.internalMax < 0 || c.externalMax <= 0) return alert('Set the internal and external maximum marks.')
     if (!c.id && !chosen.length) return alert('Add at least one subject.')
     if (chosen.some((p) => !p.date)) return alert('Every subject needs a date (use "Fill dates").')
     const clash = chosen.find((p, i) => chosen.some((q, j) => j !== i && q.date === p.date && q.start < p.end && p.start < q.end))
@@ -225,12 +226,12 @@ function ExamAdmin() {
     const cls = db.classes.find((x) => x.id === c.classId)
     const sid = c.id ?? uid('es')
     update((d) => {
-      if (c.id) { const s = d.examSessions.find((x) => x.id === c.id)!; Object.assign(s, { title: c.title, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading }); applySessionRules(d, s); return }
-      d.examSessions.push({ id: sid, title: c.title.trim(), kind: c.kind, classId: c.kind === 'Supplementary' ? undefined : c.classId, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, createdAt: Date.now() })
+      if (c.id) { const s = d.examSessions.find((x) => x.id === c.id)!; Object.assign(s, { title: c.title, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, internalMax: c.internalMax, externalMax: c.externalMax }); applySessionRules(d, s); return }
+      d.examSessions.push({ id: sid, title: c.title.trim(), kind: c.kind, classId: c.kind === 'Supplementary' ? undefined : c.classId, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, internalMax: c.internalMax, externalMax: c.externalMax, createdAt: Date.now() })
       for (const p of chosen) {
         const id = uid('ex')
         d.exams.push({ id, sessionId: sid, courseId: p.courseId, title: c.title.trim(), date: p.date, start: p.start, end: p.end, venue: 'Exam Block', maxMarks: p.maxMarks, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, minInternal: 0, resultsPublished: false, grading: c.grading, evaluatorId: p.evaluatorId, kind: c.kind === 'Supplementary' ? 'Supplementary' : 'Regular' })
-        if (c.kind === 'End Semester') linkSheet(d, id, p.courseId, p.evaluatorId)
+        if (c.kind === 'End Semester') linkSheet(d, id, p.courseId, p.evaluatorId, { internalMax: c.internalMax, externalMax: c.externalMax })
       }
     })
     if (!c.id) {
@@ -257,7 +258,7 @@ function ExamAdmin() {
       } else {
         const id = uid('ex')
         d.exams.push({ id, sessionId: s.id, courseId: p.courseId, title: s.title, date: p.date, start: p.start, end: p.end, venue: 'Exam Block', maxMarks: p.maxMarks, minAttendance: s.minAttendance, requireFeesCleared: s.requireFeesCleared, minInternal: 0, resultsPublished: false, grading: s.grading, evaluatorId: p.evaluatorId, kind: s.kind === 'Supplementary' ? 'Supplementary' : 'Regular' })
-        if (s.kind === 'End Semester') linkSheet(d, id, p.courseId, p.evaluatorId)
+        if (s.kind === 'End Semester') linkSheet(d, id, p.courseId, p.evaluatorId, { internalMax: s.internalMax ?? DEFAULT_INTERNAL, externalMax: s.externalMax ?? DEFAULT_EXTERNAL })
       }
     })
     notify([p.evaluatorId], `${p.examId ? 'Updated' : 'Added'}: ${courseName(db, p.courseId)} in ${s.title} on ${fmtDate(p.date)}`, '/exams')
@@ -368,10 +369,11 @@ function ExamAdmin() {
                   <Badge>{all.length} subject(s)</Badge>
                   <Badge tone="info">Eligibility: attendance ≥ {s.minAttendance}%{s.requireFeesCleared ? ', fees cleared' : ''}</Badge>
                   <Badge>{s.grading === 'RELATIVE' ? 'Relative grading' : 'Absolute grading'}</Badge>
+                  {(s.kind === 'End Semester' || s.kind === 'Supplementary') && <Badge tone="accent">Internal {s.internalMax ?? DEFAULT_INTERNAL} + External {s.externalMax ?? DEFAULT_EXTERNAL}</Badge>}
                   <div className="grow" />
                   {isAdmin && !published && <button className="btn btn-outline btn-sm" onClick={() => { const papersDraft = (cls ? classCourses(db, cls) : []).filter((c) => !all.some((e) => e.courseId === c.id)); setPaperEdit({ sessionId: s.id, courseId: papersDraft[0]?.id ?? '', date: dates?.to ?? '', start: all[0]?.start ?? '09:30', end: all[0]?.end ?? '12:30', maxMarks: all[0]?.maxMarks ?? 100, evaluatorId: papersDraft[0]?.facultyId ?? facultyList[0]?.id ?? '' }) }}><Plus size={12} /> Add subject</button>}
                   {isAdmin && !published && all.length > 0 && <button className="btn btn-outline btn-sm" onClick={() => seatSession(s.id)}><Armchair size={12} /> Seating for all subjects</button>}
-                  {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setCreating({ id: s.id, title: s.title, kind: s.kind, classId: s.classId ?? '', minAttendance: s.minAttendance, requireFeesCleared: s.requireFeesCleared, grading: s.grading, firstDate: '', gap: 0, papers: [] })}><Pencil size={12} /> Settings</button>}
+                  {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setCreating({ id: s.id, title: s.title, kind: s.kind, classId: s.classId ?? '', minAttendance: s.minAttendance, requireFeesCleared: s.requireFeesCleared, grading: s.grading, internalMax: s.internalMax ?? DEFAULT_INTERNAL, externalMax: s.externalMax ?? DEFAULT_EXTERNAL, firstDate: '', gap: 0, papers: [] })}><Pencil size={12} /> Settings</button>}
                   {hasSheets ? <Link className="btn btn-sm" to="/results">Result sheets</Link> : isAdmin && !published && all.length > 0 && <button className="btn btn-sm" onClick={() => publishSession(s.id)}>Publish marks</button>}
                   {isAdmin && all.length === 0 && <button className="btn btn-ghost btn-sm" onClick={() => removeSession(s.id)}><Trash2 size={12} /> Delete</button>}
                 </div>
@@ -387,7 +389,7 @@ function ExamAdmin() {
                         <tr key={e.id}>
                           <td><strong>{c?.code}</strong> {c?.name}{s.kind === 'Supplementary' && <div className="small muted">{classLabel(db.classes.find((x) => x.id === c?.classId))}</div>}</td>
                           <td className="small">{fmtDate(e.date)}<div className="muted">{e.start}–{e.end}</div></td>
-                          <td>{e.maxMarks}</td>
+                          <td>{e.maxMarks}{sheetOf(e) && <div className="small muted">→ /{sheetOf(e)!.externalMax}</div>}</td>
                           <td>{isAdmin && !e.resultsPublished ? (
                             <select className="select" style={{ width: 'auto', padding: '4px 8px' }} aria-label={`Evaluator for ${c?.code}`} value={e.evaluatorId ?? ''} onChange={(ev) => { const v = ev.target.value; update((d) => { d.exams.find((x) => x.id === e.id)!.evaluatorId = v; const sh = d.resultSheets.find((x) => x.examId === e.id); if (sh) sh.evaluatorId = v }); notify([v], `You are the evaluator for ${c?.code} in ${e.title}`, '/results') }}>
                               <option value="">Not allotted</option>{facultyList.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -434,6 +436,19 @@ function ExamAdmin() {
             <Field label="Minimum attendance %"><input className="input" type="number" min={0} max={100} value={c.minAttendance} onChange={(e) => setCreating({ ...c, minAttendance: Number(e.target.value) })} /></Field>
             <Field label="Grading"><select className="select" value={c.grading} onChange={(e) => setCreating({ ...c, grading: e.target.value as Exam['grading'] })}><option value="ABSOLUTE">Absolute</option><option value="RELATIVE">Relative (absolute for &lt; 10 students)</option></select></Field>
           </div>
+          {(c.kind === 'End Semester' || c.kind === 'Supplementary') && (
+            <div className="card stack" style={{ padding: 12, gap: 8 }}>
+              <div className="row gap wrap" style={{ alignItems: 'flex-end' }}>
+                <Field label="Internal max"><input className="input" style={{ width: 110 }} type="number" min={0} aria-label="Internal max" value={c.internalMax} onChange={(e) => setCreating({ ...c, internalMax: Number(e.target.value) })} /></Field>
+                <span style={{ paddingBottom: 10 }}>+</span>
+                <Field label="External max"><input className="input" style={{ width: 110 }} type="number" min={1} aria-label="External max" value={c.externalMax} onChange={(e) => setCreating({ ...c, externalMax: Number(e.target.value) })} /></Field>
+                <span style={{ paddingBottom: 10 }}>= <strong>{c.internalMax + c.externalMax}</strong> marks</span>
+                <div className="grow" />
+                {(c.internalMax !== DEFAULT_INTERNAL || c.externalMax !== DEFAULT_EXTERNAL) && <button className="btn btn-ghost btn-sm" style={{ marginBottom: 6 }} onClick={() => setCreating({ ...c, internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL })}>Use {DEFAULT_INTERNAL}/{DEFAULT_EXTERNAL}</button>}
+              </div>
+              <span className="small muted">Final = internal (from the assignments, quizzes and tests selected on each subject's result sheet, out of {c.internalMax}) + external (this exam's paper marks scaled to {c.externalMax}). {!isNew && 'Changing it updates subjects whose results are not yet published.'}</span>
+            </div>
+          )}
           <label className="row gap"><input type="checkbox" checked={c.requireFeesCleared} onChange={(e) => setCreating({ ...c, requireFeesCleared: e.target.checked })} /> Students must have cleared fees</label>
           {!isNew && <div className="small muted">Rules apply to every subject in this exam. Add, edit or remove subjects from the exam card.</div>}
           {isNew && c.kind === 'Supplementary' && <div className="alert alert-info small">Supplementary subjects are added when you register backlog students (Result Sheets → Backlog registration), or with "Add subject" after creating.</div>}
