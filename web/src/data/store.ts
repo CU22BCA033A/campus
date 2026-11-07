@@ -25,6 +25,10 @@ function load(): DB {
         }
         for (const s of saved.examSessions ?? []) { s.internalMax ??= 60; s.externalMax ??= 40 }
       }
+      if (saved.version < 9) {
+        // Version 9: pass rules (minimum total and external marks) set on the exam.
+        for (const s of saved.examSessions ?? []) { s.minTotalMarks ??= Math.round(((s.internalMax ?? 60) + (s.externalMax ?? 40)) * 0.4 * 10) / 10; s.minExternalMarks ??= Math.round((s.externalMax ?? 40) * 0.35 * 10) / 10 }
+      }
       if (saved.version < 7) {
         // Version 7: CGPA/backlogs are derived; keep earlier semesters as a prior record.
         for (const u of saved.users) {

@@ -8,6 +8,17 @@ import { gradeFor, registerSheetInternal } from './lib'
 /** General ratio: internal 60, external 40 (the Registrar of Evaluation can change it per exam). */
 export const DEFAULT_INTERNAL = 60
 export const DEFAULT_EXTERNAL = 40
+/** Default pass rules: 40% overall and 35% in the external exam. */
+export const DEFAULT_MIN_TOTAL_PCT = 40
+export const DEFAULT_MIN_EXTERNAL_PCT = 35
+/** Pass rules of an exam as percentages for its result sheets (marks are stored on the exam). */
+export function passRules(s: { internalMax?: number; externalMax?: number; minTotalMarks?: number; minExternalMarks?: number }) {
+  const im = s.internalMax ?? DEFAULT_INTERNAL, em = s.externalMax ?? DEFAULT_EXTERNAL
+  return {
+    minTotalPct: s.minTotalMarks === undefined ? DEFAULT_MIN_TOTAL_PCT : Math.round((s.minTotalMarks / (im + em)) * 1000) / 10,
+    minExternalPct: s.minExternalMarks === undefined ? DEFAULT_MIN_EXTERNAL_PCT : em ? Math.round((s.minExternalMarks / em) * 1000) / 10 : 0,
+  }
+}
 
 export const compKey = (c: InternalComponent) => `${c.kind}:${c.id}`
 const r1 = (n: number) => Math.round(n * 10) / 10

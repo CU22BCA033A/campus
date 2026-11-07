@@ -112,7 +112,10 @@ The Registrar of Evaluation creates **one exam** for a class (e.g. *End Semester
 maximum marks and evaluator ("Fill dates" spaces them out, skipping Sundays; overlapping
 papers are flagged). The exam also sets the **internal / external maximum marks** for its
 subjects' result sheets (general ratio **internal 60 + external 40**); each paper's own marks
-are scaled to the external maximum. Changing the split later updates unpublished subjects only. Eligibility rules and grading are set once per exam and apply to every
+are scaled to the external maximum. It also sets the **pass rules in marks**: the minimum
+final mark to pass (default 40/100) and the minimum external exam marks (default 14/40). A
+subject is passed only if both are met; otherwise the grade is F (AB if absent). Changing the
+split or the rules later updates unpublished subjects only. Eligibility rules and grading are set once per exam and apply to every
 subject. Subjects can be added, edited or removed later; seating and invigilators can be
 generated for all subjects at once; students see their schedule grouped by exam and get one
 hall ticket per exam. End-semester subjects get result sheets automatically; other exams

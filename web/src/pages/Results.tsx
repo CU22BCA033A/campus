@@ -298,7 +298,7 @@ function SheetEditor({ sheetId, onClose }: { sheetId: string; onClose: () => voi
         <span>Evaluator: <strong>{userName(db, sh.evaluatorId)}</strong></span>
         <span>External exam: <strong>{exam ? `${exam.title} (${exam.maxMarks} marks, ${fmtDate(exam.date)})` : 'not linked'}</strong></span>
         <span>Internal {sh.internalMax} + External {sh.externalMax} = {sh.internalMax + sh.externalMax}</span>
-        <span>Pass: external ≥ {sh.minExternalPct}% and total ≥ {sh.minTotalPct}%</span>
+        <span>Pass: total ≥ {Math.round((sh.minTotalPct / 100) * (sh.internalMax + sh.externalMax) * 10) / 10}/{sh.internalMax + sh.externalMax} ({sh.minTotalPct}%) and external ≥ {Math.round((sh.minExternalPct / 100) * sh.externalMax * 10) / 10}/{sh.externalMax} ({sh.minExternalPct}%)</span>
         <div className="grow" />
         {canEdit && <button className="btn btn-outline btn-sm" onClick={() => setShowSettings((v) => !v)}><Settings2 size={14} /> {showSettings ? 'Hide settings' : 'Internals & settings'}</button>}
       </div>

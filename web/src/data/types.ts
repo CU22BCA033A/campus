@@ -388,6 +388,8 @@ export interface ExamSession {
   grading: 'ABSOLUTE' | 'RELATIVE'
   internalMax?: number // marks split for every subject's result sheet (default 60 / 40)
   externalMax?: number
+  minTotalMarks?: number // pass rules, in marks: final (internal + external) at least this…
+  minExternalMarks?: number // …and the external exam at least this (out of externalMax)
   createdAt: number
 }
 export interface ExamResult {

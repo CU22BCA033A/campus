@@ -1,6 +1,6 @@
 /** Exams as sessions of subject papers. */
 import type { DB, Exam, ExamKind, ExamSession } from './data/types'
-import { DEFAULT_EXTERNAL, DEFAULT_INTERNAL } from './results'
+import { DEFAULT_EXTERNAL, DEFAULT_INTERNAL, passRules } from './results'
 
 export const kindOfTitle = (t: string): ExamKind => (/supplementary/i.test(t) ? 'Supplementary' : /end sem/i.test(t) ? 'End Semester' : /mid/i.test(t) ? 'Mid-Semester' : /internal|test/i.test(t) ? 'Internal Test' : 'Other')
 export const sessionPapers = (db: DB, sessionId: string) => db.exams.filter((e) => e.sessionId === sessionId).sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
@@ -25,7 +25,7 @@ export function groupIntoSessions(d: DB) {
       const base = `es-${(classId ?? 'supp').replace(/^cls-/, '')}-${kind.toLowerCase().replace(/[^a-z]/g, '')}`
       let id = base, n = 2
       while (d.examSessions.some((x) => x.id === id)) id = `${base}-${n++}`
-      s = { id, title, kind, classId, minAttendance: e.minAttendance, requireFeesCleared: e.requireFeesCleared, grading: e.grading, internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL, createdAt: Date.now() }
+      s = { id, title, kind, classId, minAttendance: e.minAttendance, requireFeesCleared: e.requireFeesCleared, grading: e.grading, internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL, minTotalMarks: (DEFAULT_INTERNAL + DEFAULT_EXTERNAL) * 0.4, minExternalMarks: DEFAULT_EXTERNAL * 0.35, createdAt: Date.now() }
       d.examSessions.push(s)
     }
     e.sessionId = s.id
@@ -38,6 +38,6 @@ export function applySessionRules(d: DB, s: ExamSession) {
     if (e.sessionId !== s.id) continue
     e.minAttendance = s.minAttendance; e.requireFeesCleared = s.requireFeesCleared; e.grading = s.grading; e.title = s.title
     // The exam's internal/external split applies to its subjects' result sheets that are not yet published.
-    for (const sh of d.resultSheets) if (sh.examId === e.id && sh.status !== 'PUBLISHED') { sh.internalMax = s.internalMax ?? DEFAULT_INTERNAL; sh.externalMax = s.externalMax ?? DEFAULT_EXTERNAL }
+    for (const sh of d.resultSheets) if (sh.examId === e.id && sh.status !== 'PUBLISHED') { sh.internalMax = s.internalMax ?? DEFAULT_INTERNAL; sh.externalMax = s.externalMax ?? DEFAULT_EXTERNAL; Object.assign(sh, passRules(s)) }
   }
 }
