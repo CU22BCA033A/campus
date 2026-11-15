@@ -5,6 +5,7 @@
  */
 import type { DB, User } from './data/types'
 import { studentResults } from './results'
+import { semesterOf } from './registration'
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 
@@ -14,7 +15,7 @@ export function transcript(db: DB, studentId: string) {
   // studentResults is newest first, so the first attempt seen per course is the latest.
   for (const x of studentResults(db, studentId)) if (!latest.has(x.course.id)) latest.set(x.course.id, x)
   const bySem = new Map<number, ReturnType<typeof studentResults>>()
-  for (const x of latest.values()) bySem.set(x.sheet.semester, [...(bySem.get(x.sheet.semester) ?? []), x])
+  for (const x of latest.values()) { const sem = semesterOf(db, x.sheet, studentId); bySem.set(sem, [...(bySem.get(sem) ?? []), x]) }
   const semesters = [...bySem.entries()].sort((a, b) => a[0] - b[0]).map(([semester, rows]) => {
     const credits = rows.reduce((t, x) => t + x.course.credits, 0)
     const points = rows.reduce((t, x) => t + x.row.point * x.course.credits, 0)

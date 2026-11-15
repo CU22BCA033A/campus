@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
-import { Avatar, Badge, Card, Empty, PageHeader, Progress } from '../components/ui'
+import { Avatar, Badge, Card, Empty, PageHeader, Progress, Tabs } from '../components/ui'
+import AcademicRecord from '../components/AcademicRecord'
 import EditUser, { canEditProfile } from '../components/EditUser'
-import { canAccess, personaLabel } from '../access'
+import { can, canAccess, personaLabel } from '../access'
 import { classLabel } from '../classes'
 import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { attendanceStats, coursesFor, inr, studentDues } from '../lib'
@@ -16,7 +17,10 @@ export default function Person() {
   const me = useCurrentUser()!
   const [editing, setEditing] = useState(false)
   const u = db.users.find((x) => x.id === id)
+  // Student-record offices and the class mentor see the full academic record; the Registrar of Evaluation starts there.
+  const [tab, setTab] = useState<'profile' | 'record'>(can(me, 'manageResults') && u?.role === 'student' ? 'record' : 'profile')
   if (!u) return <Empty text="Person not found." />
+  const seesRecord = u.role === 'student' && (canAccess(me, '/classes') || db.classes.some((c) => c.id === u.classId && c.mentorId === me.id))
   const cls = db.classes.find((c) => c.id === u.classId)
   const courses = u.role === 'faculty' || u.role === 'student' ? coursesFor(db, u) : []
   const att = u.role === 'student' ? attendanceStats(db, u.id) : null
@@ -25,6 +29,8 @@ export default function Person() {
   return (
     <>
       <PageHeader title={u.name} subtitle={personaLabel(u)} actions={canEditProfile(me, u) && <button className="btn" onClick={() => setEditing(true)}><Pencil size={14} /> Edit profile</button>} />
+      {seesRecord && <Tabs value={tab} onChange={setTab} tabs={[{ id: 'record', label: 'Academic record' }, { id: 'profile', label: 'Profile' }]} />}
+      {seesRecord && tab === 'record' ? <AcademicRecord studentId={u.id} /> : (
       <div className="grid grid-2">
         <Card>
           <div className="row gap" style={{ gap: 16 }}>
@@ -56,6 +62,7 @@ export default function Person() {
           </Card>
         )}
       </div>
+      )}
       {editing && <EditUser user={u} onClose={() => setEditing(false)} />}
     </>
   )

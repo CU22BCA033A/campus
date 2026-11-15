@@ -1,12 +1,13 @@
 /** Classes (programme + batch + section), course rosters, class results and semester promotion. */
 import type { ClassGroup, DB } from './data/types'
 import { sheetFor, sheetRows } from './results'
+import { isPan } from './registration'
 
 export const classLabel = (c?: ClassGroup) => (c ? `${c.program} ${c.batch} · Sem ${c.semester} · Sec ${c.section}` : 'Unassigned')
 export const classOf = (db: DB, studentId: string) => db.classes.find((c) => c.id === db.users.find((u) => u.id === studentId)?.classId)
 export const classStudents = (db: DB, classId: string) => db.users.filter((u) => u.role === 'student' && u.classId === classId)
 /** Courses a class takes in its current semester. */
-export const classCourses = (db: DB, cls: ClassGroup) => db.courses.filter((c) => c.classId === cls.id && c.semester === cls.semester)
+export const classCourses = (db: DB, cls: ClassGroup) => db.courses.filter((c) => !isPan(c) && c.classId === cls.id && c.semester === cls.semester)
 
 /**
  * Keep course rosters in step with classes: a course offered to a class in that class's
@@ -31,7 +32,10 @@ export function classResults(db: DB, cls: ClassGroup, semester = cls.semester) {
   const courses = db.courses.filter((c) => c.classId === cls.id && c.semester === semester)
   const sheets = courses.map((course) => ({ course, sheet: sheetFor(db, course.id, semester) }))
   const students = classStudents(db, cls.id).filter((s) => s.status === 'ACTIVE')
-  const rowsBySheet = new Map(sheets.filter((x) => x.sheet).map((x) => [x.sheet!.id, sheetRows(db, x.sheet!)]))
+  // Foundation / open-elective courses the class's students took in this semester.
+  const regsHere = db.registrations.filter((r) => r.status === 'REGISTERED' && r.semester === semester && students.some((s) => s.id === r.studentId))
+  const pan = db.courses.filter((c) => isPan(c) && regsHere.some((r) => r.courseId === c.id)).map((course) => ({ course, sheet: sheetFor(db, course.id, course.semester) }))
+  const rowsBySheet = new Map([...sheets, ...pan].filter((x) => x.sheet).map((x) => [x.sheet!.id, sheetRows(db, x.sheet!)]))
   const rows = students.map((s) => {
     let pts = 0, cr = 0, failed = 0
     const cells = sheets.map(({ course, sheet }) => {
@@ -40,12 +44,18 @@ export function classResults(db: DB, cls: ClassGroup, semester = cls.semester) {
       if (published && r) { if (!r.pass) failed++; pts += r.point * course.credits; cr += course.credits }
       return { course, internal: r?.internal, external: r?.external, final: r?.final, max: sheet ? sheet.internalMax + sheet.externalMax : 100, grade: r?.grade, published }
     })
-    return { student: s, cells, sgpa: cr ? pts / cr : null, failed }
+    const electives = pan.filter(({ course }) => regsHere.some((r) => r.courseId === course.id && r.studentId === s.id)).map(({ course, sheet }) => {
+      const r = sheet ? rowsBySheet.get(sheet.id)!.find((x) => x.student.id === s.id) : undefined
+      const published = sheet?.status === 'PUBLISHED'
+      if (published && r) { if (!r.pass) failed++; pts += r.point * course.credits; cr += course.credits }
+      return { course, final: r?.final, grade: r?.grade, published, max: sheet ? sheet.internalMax + sheet.externalMax : 100 }
+    })
+    return { student: s, cells, electives, sgpa: cr ? pts / cr : null, failed }
   })
-  const missingExam = sheets.filter((x) => !x.sheet).map((x) => x.course.code) // no result sheet yet
-  const unpublished = sheets.filter((x) => x.sheet && x.sheet.status !== 'PUBLISHED').map((x) => x.course.code)
+  const missingExam = [...sheets, ...pan].filter((x) => !x.sheet).map((x) => x.course.code) // no result sheet yet
+  const unpublished = [...sheets, ...pan].filter((x) => x.sheet && x.sheet.status !== 'PUBLISHED').map((x) => x.course.code)
   const ready = courses.length > 0 && missingExam.length === 0 && unpublished.length === 0
-  return { semester, courses, sheets, rows, ready, missingExam, unpublished }
+  return { semester, courses, panCourses: pan.map((x) => x.course), sheets, rows, ready, missingExam, unpublished }
 }
 
 /** Analysis of a published class result: pass rate, averages, grade spread, per-course figures and rank list. */

@@ -155,9 +155,24 @@ Marks are visible only to the Registrar of Evaluation and the professor until pu
 
 In the demo: **BBA 2024** (Sem 5) is already published, **BCA 2025** (Sem 3) has marks submitted by professors and is waiting for you to publish, and **BCA 2024** (Sem 5) has its end-semester exams coming up.
 
+## Course registration (Registrar of Evaluation)
+
+*Academics → Course Registration* is where every course is created and registration is monitored.
+
+- **Class courses**: pick the class and semester (current, or next semester ahead of promotion). Everyone in the class is registered automatically.
+- **Foundation** and **Open elective** courses are **pan-university baskets**: pick the classes whose students may opt for them, the faculty, the credits and the **seats**. A course closes for students when it's full; the office can still register a student over capacity.
+- **Registration window** (settings tab): the term running now, the term students are registering for, the last date, and how many courses each student must take from each basket. *Start term* switches the baskets of the new term live.
+- **Monitoring**: the catalogue shows seats filled per course; *Student registrations* shows every student as Complete / Pending with filters, *Remind pending* and CSV; *Manage* registers or drops courses for a student.
+- Students choose from their baskets on the same page and see their registration history.
+- Each registration stores the student's semester, so foundation and elective results land in the right semester of the transcript, SGPA, class result (a *Foundation / elective* column) and exams. *Result Sheets → University courses* holds their sheets (one per course, students from many classes), and *Examinations → Create exam → University courses* sets their exam.
+
+## Academic record
+
+Open any student (*Classes*, *User Management*, *Course Registration*, search) → **Academic record**. The Registrar of Evaluation lands on it by default; other student-record offices and the class mentor can view it. It shows, semester by semester, every course registered (class course / foundation / open elective, faculty, credits, attendance, internal + external = final, grade, every attempt including supplementary, status), SGPA by semester, CGPA, credits earned, backlogs, any lateral-entry prior record and the full course registration history (including drops), with print. The office can manage the student's registration or register backlogs from there.
+
 ### Demo data
 
-The demo data is one connected record, not sample numbers per page: every class has its earlier semesters as real courses, exams, marks and published result sheets (`web/src/data/seedHistory.ts`), so CGPA, SGPA, transcripts and backlogs (including backlogs cleared in a supplementary exam) are all derived. Fees follow each student's semester, hostel room and bus route; attendance is marked by each course's teacher. Run `npm run check:data` to verify every reference resolves and the modules agree.
+The demo data is one connected record, not sample numbers per page: every class has its earlier semesters as real courses, exams, marks and published result sheets (`web/src/data/seedHistory.ts`), so CGPA, SGPA, transcripts and backlogs (including backlogs cleared in a supplementary exam) are all derived. Every past course also has its attendance, and every term its foundation and open-elective courses with registrations. Fees follow each student's semester, hostel room and bus route; attendance is marked by each course's teacher. Run `npm run check:data` to verify every reference resolves and the modules agree.
 
 ## Hostels
 

@@ -3,7 +3,7 @@ import { createErpSeed, officeStaff, parentUser } from './seedErp'
 import { groupIntoSessions } from '../exams'
 import { normalizeBeds } from '../hostels'
 import { sheetRows } from '../results'
-import { addAcademicHistory } from './seedHistory'
+import { addAcademicHistory, addUniversityCourses } from './seedHistory'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -118,7 +118,9 @@ const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3'
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 10,
+    version: 11,
+    registrations: [],
+    registration: { currentTerm: '', registrationTerm: '', open: false, minFoundation: 1, minOpenElective: 1 },
     examSessions: [],
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [
@@ -287,6 +289,7 @@ export function createSeed(): DB {
     ],
   }
   addAcademicHistory(seed, now)
+  addUniversityCourses(seed, now)
   // This semester's papers are named with the month of their class's first paper, like the earlier ones.
   const classOfExam = (e: DB['exams'][number]) => seed.courses.find((c) => c.id === e.courseId)?.classId
   const plain = seed.exams.filter((e) => !e.sessionId && /^(End Semester|Mid-Semester) Examination$/.test(e.title))

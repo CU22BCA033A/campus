@@ -228,7 +228,7 @@ function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; o
   const pastSems = Array.from({ length: cls.semester }, (_, i) => i + 1).filter((s) => db.courses.some((c) => c.classId === cls.id && c.semester === s))
 
   const exportCsv = () => {
-    const lines = [['Rank', 'Roll no', 'Name', ...r.courses.map((c) => c.code), 'SGPA', 'CGPA', 'Result'], ...r.rows.map((x) => [String(an.rankOf.get(x.student.id) ?? ''), x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.published && c.final !== undefined ? `${c.final} (${c.grade ?? '-'})` : '')), x.sgpa?.toFixed(2) ?? '', fmtCgpa(cgpaOf(db, x.student)), x.failed ? `${x.failed} failed` : 'Pass'])]
+    const lines = [['Rank', 'Roll no', 'Name', ...r.courses.map((c) => c.code), 'Foundation / elective', 'SGPA', 'CGPA', 'Result'], ...r.rows.map((x) => [String(an.rankOf.get(x.student.id) ?? ''), x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.published && c.final !== undefined ? `${c.final} (${c.grade ?? '-'})` : '')), x.electives.map((e) => `${e.course.code} ${e.published ? e.grade ?? '' : ''}`).join(' '), x.sgpa?.toFixed(2) ?? '', fmtCgpa(cgpaOf(db, x.student)), x.failed ? `${x.failed} failed` : 'Pass'])]
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); a.download = `${cls.id}-sem${semester}-results.csv`; a.click()
   }
   const maxGrade = Math.max(1, ...an.grades.map((g) => g.count))
@@ -260,12 +260,13 @@ function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; o
       </div>}>
         {r.courses.length === 0 ? <Empty text="No courses in this semester." /> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Rank</th><th>Student</th>{r.courses.map((c) => <th key={c.id} title={`${c.name} · ${c.credits} credits`}>{c.code}</th>)}<th>SGPA</th><th>CGPA</th><th>Result</th></tr></thead>
+            <thead><tr><th>Rank</th><th>Student</th>{r.courses.map((c) => <th key={c.id} title={`${c.name} · ${c.credits} credits`}>{c.code}</th>)}{r.panCourses.length > 0 && <th title="Pan-university courses the student registered for">Foundation / elective</th>}<th>SGPA</th><th>CGPA</th><th>Result</th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.student.id}>
                 <td>{r.ready && an.rankOf.has(x.student.id) ? <strong>{an.rankOf.get(x.student.id)}</strong> : <span className="muted">—</span>}</td>
                 <td>{x.student.name}<div className="small muted">{x.student.rollNo}</div></td>
                 {x.cells.map((c) => <td key={c.course.id}>{c.final !== undefined && (c.published || seesDrafts) ? <span title={`Internal ${c.internal} + External ${c.external}`}>{c.final}/{c.max} {c.published ? c.grade && <Badge tone={c.grade === 'F' || c.grade === 'AB' ? 'danger' : 'success'}>{c.grade}</Badge> : <Badge>Draft</Badge>}</span> : <span className="muted">—</span>}</td>)}
+                {r.panCourses.length > 0 && <td className="small">{x.electives.map((e) => <div key={e.course.id} title={e.course.name}>{e.course.code} {e.final !== undefined && (e.published || seesDrafts) ? <>{e.final}/{e.max} {e.published ? e.grade && <Badge tone={e.grade === 'F' || e.grade === 'AB' ? 'danger' : 'success'}>{e.grade}</Badge> : <Badge>Draft</Badge>}</> : <span className="muted">—</span>}</div>)}</td>}
                 <td><strong>{x.sgpa?.toFixed(2) ?? '—'}</strong></td>
                 <td>{fmtCgpa(cgpaOf(db, x.student))}</td>
                 <td>{r.ready ? <Badge tone={x.failed ? 'danger' : 'success'}>{x.failed ? `${x.failed} backlog(s)` : 'Pass'}</Badge> : <Badge>Pending</Badge>}</td>

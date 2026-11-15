@@ -4,6 +4,7 @@
  */
 import type { DB, InternalComponent, ResultSheet, User } from './data/types'
 import { gradeFor, registerSheetInternal } from './lib'
+import { semesterOf } from './registration'
 
 /** General ratio: internal 60, external 40 (the Registrar of Evaluation can change it per exam). */
 export const DEFAULT_INTERNAL = 60
@@ -125,7 +126,7 @@ export function studentResults(db: DB, studentId: string) {
 export function sgpaOf(db: DB, studentId: string, semester?: number) {
   let pts = 0, cr = 0
   for (const x of studentResults(db, studentId)) {
-    if (x.sheet.term !== 'Regular' || x.row.backlogAttempt || (semester !== undefined && x.sheet.semester !== semester)) continue
+    if (x.sheet.term !== 'Regular' || x.row.backlogAttempt || (semester !== undefined && semesterOf(db, x.sheet, studentId) !== semester)) continue
     pts += x.row.point * x.course.credits; cr += x.course.credits
   }
   return cr ? pts / cr : null

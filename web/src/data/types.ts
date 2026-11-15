@@ -43,7 +43,37 @@ export interface Course {
   semester: number
   description: string
   studentIds: string[] // kept in sync with the class roster while the class is in this course's semester
-  classId?: string // the class (batch + section) this course is offered to
+  classId?: string // the class (batch + section) this course is offered to (class / core courses)
+  kind?: CourseKind // default CORE
+  slots?: number // seats; pan-university courses close when full
+  classIds?: string[] // pan-university courses: classes whose students may opt for it
+  term?: string // pan-university courses run in one academic term (e.g. "Odd 2026-27")
+}
+
+/** Class (core) courses belong to one class; foundation and open-elective courses are pan-university baskets. */
+export type CourseKind = 'CORE' | 'FOUNDATION' | 'OPEN_ELECTIVE'
+
+/** A student's registration in a pan-university course (class courses are taken by the whole class). */
+export interface CourseRegistration {
+  id: string
+  courseId: string
+  studentId: string
+  semester: number // the student's semester when the course runs (places it in the transcript)
+  term: string
+  status: 'REGISTERED' | 'DROPPED'
+  at: number
+  by: string // student or the Registrar of Evaluation
+  droppedAt?: number
+}
+
+/** Course registration window, run by the Registrar of Evaluation. */
+export interface RegistrationSettings {
+  currentTerm: string // pan-university courses of this term are running now
+  registrationTerm: string // students are registering for this term (the next one, or the current one)
+  open: boolean
+  closesAt?: number
+  minFoundation: number // courses each student must take from each basket
+  minOpenElective: number
 }
 
 /** A class: one programme, admission batch and section, currently in `semester`. */
@@ -276,6 +306,8 @@ export interface DB {
   users: User[]
   classes: ClassGroup[]
   courses: Course[]
+  registrations: CourseRegistration[]
+  registration: RegistrationSettings
   materials: Material[]
   assignments: Assignment[]
   submissions: Submission[]

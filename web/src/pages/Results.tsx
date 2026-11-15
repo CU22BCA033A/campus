@@ -4,7 +4,7 @@ import { CheckCircle2, Download, FileSpreadsheet, RotateCcw, Send, Settings2, Us
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, SearchBox, Stat, Tabs } from '../components/ui'
 import { can, officeUsers } from '../access'
-import { classCourses, classLabel, classStudents } from '../classes'
+import { classCourses, classLabel, classResults, classStudents } from '../classes'
 import { fmtDate, fmtDateTime, matches, userName } from '../lib'
 import { isCurrentCourse } from '../lib'
 import { availableComponents, compKey, componentInfo, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet, publishSheet, sheetFor, sheetProgress, sheetRows } from '../results'
@@ -12,6 +12,7 @@ import type { ResultSheet } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 import ClassChip from '../components/ClassChip'
+import { courseWhen, isPan, KIND_LABEL } from '../registration'
 
 const statusTone = (s: ResultSheet['status']) => (s === 'PUBLISHED' ? 'success' : s === 'SUBMITTED' ? 'info' : 'warning')
 const statusLabel = (s: ResultSheet['status']) => (s === 'PUBLISHED' ? 'Published' : s === 'SUBMITTED' ? 'Submitted to Evaluation' : 'Draft (with professor)')
@@ -25,7 +26,7 @@ export default function Results() {
   const classes = db.classes.filter((c) => office || classCourses(db, c).some((co) => co.facultyId === me.id || db.resultSheets.some((sh) => sh.courseId === co.id && sh.evaluatorId === me.id)))
   const [classId, setClassId] = useState(classes[0]?.id ?? '')
   const [showOld, setShowOld] = useState(false)
-  const [tab, setTab] = useState<'class' | 'supplementary' | 'backlogs'>('class')
+  const [tab, setTab] = useState<'class' | 'university' | 'supplementary' | 'backlogs'>('class')
   const [q, setQ] = useState('')
   const [openSheet, setOpenSheet] = useState<string | null>(null)
   const cls = db.classes.find((c) => c.id === classId)
@@ -41,10 +42,12 @@ export default function Results() {
   }
   const publishClass = () => {
     if (!cls) return
-    const sheets = classCourses(db, cls).map((c) => sheetFor(db, c.id, cls.semester)).filter(Boolean) as ResultSheet[]
+    const pan = classResults(db, cls).panCourses.map((c) => sheetFor(db, c.id, c.semester)).filter((s): s is ResultSheet => !!s && s.status !== 'PUBLISHED')
+    if (pan.length && !confirm(`This class also takes ${pan.map((s) => db.courses.find((c) => c.id === s.courseId)?.code).join(', ')} (foundation / open elective, shared with other classes). Publish ${pan.length > 1 ? 'those sheets' : 'that sheet'} too, for every student on it?`)) return
+    const sheets = [...(classCourses(db, cls).map((c) => sheetFor(db, c.id, cls.semester)).filter(Boolean) as ResultSheet[]), ...pan]
     const incomplete = sheets.filter((s) => !sheetProgress(db, s).complete)
     const notSubmitted = sheets.filter((s) => s.status === 'DRAFT')
-    if (sheets.length < classCourses(db, cls).length) return alert('Every course needs a result sheet before the class can be published.')
+    if (sheets.length - pan.length < classCourses(db, cls).length) return alert('Every course needs a result sheet before the class can be published.')
     if (incomplete.length) return alert(`External marks are missing in: ${incomplete.map((s) => db.courses.find((c) => c.id === s.courseId)?.code).join(', ')}`)
     if (notSubmitted.length && !confirm(`${notSubmitted.length} sheet(s) have not been submitted by the professor. Publish anyway?`)) return
     update((d) => { for (const s of sheets) if (s.status !== 'PUBLISHED') publishSheet(d, s.id, me.id) })
@@ -61,12 +64,16 @@ export default function Results() {
   ]
   const supplementary = supAll.filter((s) => rf.ok('cls', db.courses.find((c) => c.id === s.courseId)?.classId) && rf.ok('status', s.status))
 
+  // Foundation / open-elective courses of the running term (one sheet per course, students from many classes).
+  const uniCourses = db.courses.filter((c) => isPan(c) && c.term === db.registration.currentTerm)
+
   return (
     <>
       <PageHeader title="Results" subtitle={office ? 'Internal + external = final. Collect marks from professors, review, publish by class, and register backlogs' : 'Fill internals and external marks for your courses, then submit to the Registrar of Evaluation'}
         search={{ value: q, onChange: setQ, placeholder: 'Search course, professor or student…' }} />
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'class', label: 'Class results' },
+        ...(office ? [{ id: 'university' as const, label: 'University courses', count: uniCourses.filter((c) => sheetFor(db, c.id, c.semester)?.status === 'SUBMITTED').length }] : []),
         { id: 'supplementary', label: 'Supplementary / backlog exams', count: supplementary.length },
         ...(office ? [{ id: 'backlogs' as const, label: 'Backlog registration', count: db.users.filter((u) => u.backlogCourses?.length).length }] : []),
       ]} />
@@ -85,7 +92,7 @@ export default function Results() {
                 <tbody>{mine.map((sh) => { const c = db.courses.find((x) => x.id === sh.courseId)!; const prog = sheetProgress(db, sh); return (
                   <tr key={sh.id}>
                     <td><strong>{c.code}</strong> {c.name}</td>
-                    <td className="small">{(() => { const cl = db.classes.find((x) => x.id === c.classId); return cl ? `${cl.program} ${cl.batch} · Sem ${sh.semester} · Sec ${cl.section}` : '—' })()}</td>
+                    <td className="small">{(() => { const cl = db.classes.find((x) => x.id === c.classId); return cl ? `${cl.program} ${cl.batch} · Sem ${sh.semester} · Sec ${cl.section}` : courseWhen(c) })()}</td>
                     <td className="small">{[c.facultyId === me.id && 'Teacher (internals)', sh.evaluatorId === me.id && 'Evaluator (external)'].filter(Boolean).join(' · ')}</td>
                     <td className="small">{prog.withExternal}/{prog.total} external</td>
                     <td><Badge tone={statusTone(sh.status)}>{statusLabel(sh.status)}</Badge></td>
@@ -113,7 +120,7 @@ export default function Results() {
                   <Stat label="Marks complete" value={sheets.filter((x) => x.sh && sheetProgress(db, x.sh).complete).length} tone="warning" />
                   <Stat label="Published" value={`${published}/${courses.length}`} tone="success" />
                 </div>
-                <Card title={`${classLabel(cls)}: result sheets`} action={office && <div className="row gap"><Link className="btn btn-outline btn-sm" to={`/classes?class=${cls.id}&tab=results`}>{published === courses.length && courses.length ? 'View class result & promote' : 'Class result'}</Link><button className="btn btn-sm" disabled={published === courses.length || !courses.length} onClick={publishClass}><CheckCircle2 size={14} /> Publish class results</button></div>}>
+                <Card title={`${classLabel(cls)}: result sheets`} action={office && <div className="row gap"><Link className="btn btn-outline btn-sm" to={`/classes?class=${cls.id}&tab=results`}>{classResults(db, cls).ready ? 'View class result & promote' : 'Class result'}</Link><button className="btn btn-sm" disabled={classResults(db, cls).ready || !courses.length} onClick={publishClass}><CheckCircle2 size={14} /> Publish class results</button></div>}>
                   {courses.length === 0 ? <Empty text="No courses for this semester." /> : (
                     <div className="table-wrap"><table>
                       <thead><tr><th>Course</th><th>Evaluator</th><th>External exam</th><th>Internals counted</th><th>Marks</th><th>Status</th><th /></tr></thead>
@@ -141,6 +148,32 @@ export default function Results() {
         </>
       )}
 
+      {tab === 'university' && office && (
+        <Card title={`Foundation & open-elective courses · ${db.registration.currentTerm}`} action={<span className="small muted">One sheet per course, students from several classes</span>}>
+          {uniCourses.length === 0 ? <Empty text="No foundation or open-elective courses this term." /> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Course</th><th>Type</th><th>Classes</th><th>Evaluator</th><th>Marks</th><th>Status</th><th /></tr></thead>
+              <tbody>{uniCourses.filter((c) => matches(q, c.code, c.name, userName(db, c.facultyId))).map((c) => {
+                const sh = sheetFor(db, c.id, c.semester)
+                const prog = sh && sheetProgress(db, sh)
+                const classes = [...new Set(c.studentIds.map((id) => db.users.find((u) => u.id === id)?.classId))].map((id) => db.classes.find((x) => x.id === id)).filter(Boolean)
+                return (
+                  <tr key={c.id}>
+                    <td><strong>{c.code}</strong> {c.name}<div className="small muted">{c.studentIds.length} students</div></td>
+                    <td><Badge tone={c.kind === 'FOUNDATION' ? 'info' : 'accent'}>{KIND_LABEL[c.kind!]}</Badge></td>
+                    <td className="small">{classes.map((x) => `${x!.program} ${x!.batch}`).join(', ')}</td>
+                    <td className="small">{userName(db, sh?.evaluatorId ?? c.facultyId)}</td>
+                    <td className="small">{prog ? `${prog.withExternal}/${prog.total} external` : '—'}</td>
+                    <td>{sh ? <Badge tone={statusTone(sh.status)}>{statusLabel(sh.status)}</Badge> : <Badge>No sheet</Badge>}</td>
+                    <td>{sh ? <button className="btn btn-outline btn-sm" onClick={() => setOpenSheet(sh.id)}>Open sheet</button> : <button className="btn btn-outline btn-sm" onClick={() => setOpenSheet(ensureSheet(c.id))}>Create sheet</button>}</td>
+                  </tr>
+                )
+              })}</tbody>
+            </table></div>
+          )}
+        </Card>
+      )}
+
       {tab === 'supplementary' && <FilterBar defs={rdefs} f={rf} count={supplementary.length} noun="sheet" />}
       {tab === 'supplementary' && (
         <Card title="Supplementary / backlog exam sheets">
@@ -152,7 +185,7 @@ export default function Results() {
                 const exam = db.exams.find((e) => e.id === sh.examId)
                 return (
                   <tr key={sh.id}>
-                    <td><strong>{c.code}</strong> {c.name}<div className="small muted">Sem {sh.semester} course · {classLabel(db.classes.find((x) => x.id === c.classId))}</div></td>
+                    <td><strong>{c.code}</strong> {c.name}<div className="small muted">{isPan(c) ? courseWhen(c) : <>Sem {sh.semester} course · {classLabel(db.classes.find((x) => x.id === c.classId))}</>}</div></td>
                     <td className="small">{sh.extraStudentIds.map((s) => userName(db, s)).join(', ')}</td>
                     <td>{userName(db, sh.evaluatorId)}</td>
                     <td className="small">{exam ? fmtDate(exam.date) : '—'}</td>
@@ -302,7 +335,7 @@ function SheetEditor({ sheetId, onClose }: { sheetId: string; onClose: () => voi
   }
 
   return (
-    <Modal wide title={`${course.code} ${course.name} · ${sh.term === 'Supplementary' ? 'Supplementary' : `Semester ${sh.semester}`} result sheet`} onClose={onClose} footer={<>
+    <Modal wide title={`${course.code} ${course.name} · ${sh.term === 'Supplementary' ? 'Supplementary' : isPan(course) ? courseWhen(course) : `Semester ${sh.semester}`} result sheet`} onClose={onClose} footer={<>
       <Badge tone={statusTone(sh.status)}>{statusLabel(sh.status)}</Badge>
       {sh.publishedAt && <span className="small muted">Published {fmtDateTime(sh.publishedAt)}</span>}
       <div className="grow" />

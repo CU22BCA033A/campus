@@ -32,7 +32,10 @@ export function timeAgo(t: number) {
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** A course offering is current while its class is in that course's semester (earlier ones are history: see transcripts). */
-export const isCurrentCourse = (db: DB, c: DB['courses'][number]) => { const cls = db.classes.find((x) => x.id === c.classId); return !cls || cls.semester === c.semester }
+export const isCurrentCourse = (db: DB, c: DB['courses'][number]) => {
+  if (c.kind && c.kind !== 'CORE') return c.term === db.registration?.currentTerm
+  const cls = db.classes.find((x) => x.id === c.classId); return !cls || cls.semester === c.semester
+}
 
 /** Courses a person takes or teaches this semester (pass all=true to include earlier semesters). */
 export function coursesFor(db: DB, user: User, all = false) {
@@ -43,7 +46,8 @@ export function coursesFor(db: DB, user: User, all = false) {
 }
 
 export function attendanceStats(db: DB, studentId: string, courseId?: string) {
-  const recs = db.attendance.filter((a) => (!courseId || a.courseId === courseId) && db.courses.find((c) => c.id === a.courseId)?.studentIds.includes(studentId))
+  // Without a course: this semester's courses only (earlier semesters are in the academic record).
+  const recs = db.attendance.filter((a) => { if (courseId ? a.courseId !== courseId : false) return false; const c = db.courses.find((x) => x.id === a.courseId); return !!c && c.studentIds.includes(studentId) && (!!courseId || isCurrentCourse(db, c)) })
   const attended = recs.filter((r) => r.present.includes(studentId)).length
   const total = recs.length
   return { attended, total, pct: total ? Math.round((attended / total) * 100) : 0 }

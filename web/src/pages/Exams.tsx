@@ -12,6 +12,7 @@ import { availableComponents, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet, pass
 import { Link } from 'react-router-dom'
 import type { DB, Exam, ExamKind } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { isPan, semesterOf } from '../registration'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
 const ROOM_SEATS = 6 // small for the demo so several rooms are used
@@ -94,7 +95,7 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
                 const rv = ex && db.revaluations.find((x) => x.examId === ex.id && x.studentId === studentId)
                 return (
                   <tr key={sheet.id}>
-                    <td><strong>{course.code}</strong> {course.name}</td><td>{sheet.semester}</td>
+                    <td><strong>{course.code}</strong> {course.name}</td><td>{semesterOf(db, sheet, student.id)}</td>
                     <td>{row.backlogAttempt ? <Badge tone="warning">Backlog</Badge> : <Badge>Regular</Badge>}</td>
                     <td>{row.internal}/{sheet.internalMax}</td>
                     <td>{row.absent ? 'Absent' : `${row.external ?? '—'}/${sheet.externalMax}`}</td>
@@ -189,7 +190,7 @@ function ExamAdmin() {
   }
   const ef = useFilters(['cls', 'kind', 'status'] as const)
   const edefs = [
-    { key: 'cls' as const, label: 'Classes', options: opts(db.examSessions.map((s) => s.classId ?? 'none'), (v) => (v === 'none' ? 'Backlog students (any class)' : classLabel(db.classes.find((c) => c.id === v)))) },
+    { key: 'cls' as const, label: 'Classes', options: opts(db.examSessions.map((s) => s.classId ?? 'none'), (v) => (v === 'none' ? 'Backlog students / university courses' : classLabel(db.classes.find((c) => c.id === v)))) },
     { key: 'kind' as const, label: 'Exam types', options: opts(db.examSessions.map((s) => s.kind)) },
     { key: 'status' as const, label: 'Statuses', options: [{ value: 'upcoming', label: 'Upcoming' }, { value: 'running', label: 'In progress' }, { value: 'done', label: 'Results published' }] },
   ]
@@ -203,7 +204,8 @@ function ExamAdmin() {
   /* ---------- create / edit an exam with its subjects ---------- */
   const draftFor = (classId: string, kind: ExamKind): PaperDraft[] => {
     const cls = db.classes.find((c) => c.id === classId)
-    return (cls ? classCourses(db, cls) : []).map((c) => ({ courseId: c.id, include: true, date: '', start: kind === 'End Semester' ? '09:30' : '10:00', end: kind === 'End Semester' ? '12:30' : '11:30', maxMarks: kind === 'End Semester' ? 100 : 50, evaluatorId: c.facultyId }))
+    // 'pan' = this term's foundation / open-elective courses (students from several classes).
+    return (classId === 'pan' ? db.courses.filter((c) => isPan(c) && c.term === db.registration.currentTerm) : cls ? classCourses(db, cls) : []).map((c) => ({ courseId: c.id, include: true, date: '', start: kind === 'End Semester' ? '09:30' : '10:00', end: kind === 'End Semester' ? '12:30' : '11:30', maxMarks: kind === 'End Semester' ? 100 : 50, evaluatorId: c.facultyId }))
   }
   const startCreate = () => { const c = db.classes[0]; setCreating({ title: defaultTitle('End Semester'), kind: 'End Semester', classId: c.id, minAttendance: 75, requireFeesCleared: true, grading: 'ABSOLUTE', internalMax: DEFAULT_INTERNAL, externalMax: DEFAULT_EXTERNAL, minTotalMarks: 40, minExternalMarks: 14, firstDate: '', gap: 2, papers: draftFor(c.id, 'End Semester') }) }
   const autoDates = () => {
@@ -237,7 +239,7 @@ function ExamAdmin() {
     const sid = c.id ?? uid('es')
     update((d) => {
       if (c.id) { const s = d.examSessions.find((x) => x.id === c.id)!; Object.assign(s, { title: c.title, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, internalMax: c.internalMax, externalMax: c.externalMax, minTotalMarks: c.minTotalMarks, minExternalMarks: c.minExternalMarks }); applySessionRules(d, s); return }
-      d.examSessions.push({ id: sid, title: c.title.trim(), kind: c.kind, classId: c.kind === 'Supplementary' ? undefined : c.classId, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, internalMax: c.internalMax, externalMax: c.externalMax, minTotalMarks: c.minTotalMarks, minExternalMarks: c.minExternalMarks, createdAt: Date.now() })
+      d.examSessions.push({ id: sid, title: c.title.trim(), kind: c.kind, classId: c.kind === 'Supplementary' || c.classId === 'pan' ? undefined : c.classId, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, grading: c.grading, internalMax: c.internalMax, externalMax: c.externalMax, minTotalMarks: c.minTotalMarks, minExternalMarks: c.minExternalMarks, createdAt: Date.now() })
       for (const p of chosen) {
         const id = uid('ex')
         d.exams.push({ id, sessionId: sid, courseId: p.courseId, title: c.title.trim(), date: p.date, start: p.start, end: p.end, venue: 'Exam Block', maxMarks: p.maxMarks, minAttendance: c.minAttendance, requireFeesCleared: c.requireFeesCleared, minInternal: 0, resultsPublished: false, grading: c.grading, evaluatorId: p.evaluatorId, kind: c.kind === 'Supplementary' ? 'Supplementary' : 'Regular' })
@@ -246,7 +248,8 @@ function ExamAdmin() {
     })
     if (!c.id) {
       for (const p of chosen) notify([p.evaluatorId], `You are the evaluator for ${db.courses.find((x) => x.id === p.courseId)?.code} in ${c.title}`, c.kind === 'End Semester' ? '/results' : '/exams')
-      if (cls) notify(db.users.filter((u) => u.role === 'student' && u.classId === cls.id).map((u) => u.id), `${c.title} timetable published: ${chosen.length} subject(s)`, '/exams')
+      const takers = cls ? db.users.filter((u) => u.role === 'student' && u.classId === cls.id).map((u) => u.id) : [...new Set(chosen.flatMap((p) => db.courses.find((x) => x.id === p.courseId)?.studentIds ?? []))]
+      if (takers.length) notify(takers, `${c.title} timetable published: ${chosen.length} subject(s)`, '/exams')
       setOpenIds(new Set([...openIds, sid]))
     }
     audit(user.id, c.id ? 'EXAM_EDIT' : 'EXAM_CREATE', `${c.title}${cls ? ` · ${classLabel(cls)}` : ''}${c.id ? '' : ` with ${chosen.length} subject(s)`}`)
@@ -376,7 +379,7 @@ function ExamAdmin() {
               <Card key={s.id} title={<span className="row gap wrap"><button className="btn btn-ghost btn-sm" onClick={() => toggle(s.id)} aria-label={open ? 'Collapse' : 'Expand'}>{open ? '▾' : '▸'}</button>{s.title} <Badge tone={s.kind === 'Supplementary' ? 'warning' : s.kind === 'End Semester' ? 'brand' : 'info'}>{s.kind}</Badge></span>}
                 action={<Badge tone={published ? 'success' : 'neutral'}>{published ? 'Results published' : dates ? `${fmtDate(dates.from)}${dates.to !== dates.from ? ` – ${fmtDate(dates.to)}` : ''}` : 'No subjects yet'}</Badge>}>
                 <div className="row gap wrap small" style={{ marginBottom: 10 }}>
-                  <span><strong>{cls ? classLabel(cls) : 'Backlog students from any class'}</strong></span>
+                  <span><strong>{cls ? classLabel(cls) : s.kind === 'Supplementary' ? 'Backlog students from any class' : 'Foundation & open-elective courses (several classes)'}</strong></span>
                   <Badge>{all.length} subject(s)</Badge>
                   <Badge tone="info">Eligibility: attendance ≥ {s.minAttendance}%{s.requireFeesCleared ? ', fees cleared' : ''}</Badge>
                   <Badge>{s.grading === 'RELATIVE' ? 'Relative grading' : 'Absolute grading'}</Badge>
@@ -444,7 +447,7 @@ function ExamAdmin() {
           <div className="grid grid-2">
             {isNew && <Field label="Type"><select className="select" value={c.kind} onChange={(e) => { const k = e.target.value as ExamKind; setCreating({ ...c, kind: k, title: defaultTitle(k), papers: k === 'Supplementary' ? [] : draftFor(c.classId, k) }) }}>{KINDS.map((k) => <option key={k}>{k}</option>)}</select></Field>}
             <Field label="Exam name"><input className="input" value={c.title} onChange={(e) => setCreating({ ...c, title: e.target.value })} placeholder="End Semester Examination – Nov 2026" /></Field>
-            {isNew && c.kind !== 'Supplementary' && <Field label="Class"><select className="select" value={c.classId} onChange={(e) => setCreating({ ...c, classId: e.target.value, papers: draftFor(e.target.value, c.kind) })}>{db.classes.map((x) => <option key={x.id} value={x.id}>{classLabel(x)}</option>)}</select></Field>}
+            {isNew && c.kind !== 'Supplementary' && <Field label="Class"><select className="select" value={c.classId} onChange={(e) => setCreating({ ...c, classId: e.target.value, papers: draftFor(e.target.value, c.kind) })}>{db.classes.map((x) => <option key={x.id} value={x.id}>{classLabel(x)}</option>)}<option value="pan">University courses: foundation & open electives ({db.registration.currentTerm})</option></select></Field>}
             <Field label="Minimum attendance %"><input className="input" type="number" min={0} max={100} value={c.minAttendance} onChange={(e) => setCreating({ ...c, minAttendance: Number(e.target.value) })} /></Field>
             <Field label="Grading"><select className="select" value={c.grading} onChange={(e) => setCreating({ ...c, grading: e.target.value as Exam['grading'] })}><option value="ABSOLUTE">Absolute</option><option value="RELATIVE">Relative (absolute for &lt; 10 students)</option></select></Field>
           </div>

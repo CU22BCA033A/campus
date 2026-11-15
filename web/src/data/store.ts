@@ -16,7 +16,7 @@ function load(): DB {
       const fresh = createSeed()
       // Version 3 restructured students into classes; older demo data is replaced rather than patched.
       // Version 10 replaced summary CGPAs with real past-semester results; older demo data is regenerated.
-      if ((saved.version ?? 1) < 10) return fresh
+      if ((saved.version ?? 1) < 11) return fresh
       if (saved.version < 8) {
         // Version 8: general ratio internal 60 / external 40 for sheets not yet published.
         for (const sh of saved.resultSheets ?? []) {

@@ -28,6 +28,7 @@ import Classes from './pages/Classes'
 import Person from './pages/People'
 import Results from './pages/Results'
 import Profile from './pages/Profile'
+import Registration from './pages/Registration'
 
 /** Signed-in, active, and allowed (by role/office) to open the current page. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/admin/audit" element={<AuditLog />} />
           <Route path="/classes" element={<Classes />} />
           <Route path="/results" element={<Results />} />
+          <Route path="/registration" element={<Registration />} />
           <Route path="/people/:id" element={<Person />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

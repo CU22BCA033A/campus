@@ -46,6 +46,7 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/attendance': ['student', 'faculty', 'exam', 'super'],
   '/exams': ['student', 'faculty', 'exam', 'super'],
   '/results': ['faculty', 'exam', 'super'],
+  '/registration': ['student', 'exam', 'registrar', 'super'],
   '/grades': ['student', 'faculty', 'exam', 'super'],
   '/feedback': ['student', 'faculty', 'registrar', 'super'],
   '/library': ['student', 'faculty', 'library', 'super'],

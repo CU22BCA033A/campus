@@ -39,9 +39,17 @@ for (const s of st) {
   for (const f of fees) { const m = /Semester (\d+)/.exec(f.title); if (m && +m[1] > cls.semester) bad.push(`${s.id} fee ${f.title} beyond sem ${cls.semester}`) }
   if (room && !fees.some((f: any) => f.head === 'Hostel')) bad.push(`${s.id} in hostel w/o hostel fee`)
 }
-for (const c of db.courses) { const cls = db.classes.find((x: any) => x.id === c.classId); const f = db.users.find((u: any) => u.id === c.facultyId); if (f?.role !== 'faculty') bad.push(`${c.id} teacher ${c.facultyId}`); if (cls && c.semester > cls.semester) bad.push(`${c.id} future semester`) }
+for (const c of db.courses) { const cls = db.classes.find((x: any) => x.id === c.classId); const f = db.users.find((u: any) => u.id === c.facultyId); if (f?.role !== 'faculty') bad.push(`${c.id} teacher ${c.facultyId}`); if (cls && c.semester > cls.semester + 1) bad.push(`${c.id} future semester`) }
 for (const a of db.attendance) { const c = db.courses.find((x: any) => x.id === a.courseId); if (c.facultyId !== a.markedBy) bad.push(`att ${a.id} marked by ${a.markedBy} not ${c.facultyId}`) }
 for (const t of db.timetable) if (!sets.course.has(t.courseId)) bad.push(`tt ${t.id}`)
+// Pan-university courses: roster = active registrations; registrations point at real students in eligible classes
+for (const c of db.courses.filter((x: any) => x.kind && x.kind !== 'CORE')) {
+  const regs = db.registrations.filter((r: any) => r.courseId === c.id && r.status === 'REGISTERED').map((r: any) => r.studentId).sort()
+  if (JSON.stringify(regs) !== JSON.stringify([...c.studentIds].sort())) bad.push(`${c.code} roster differs from registrations`)
+  if (c.slots && c.studentIds.length > c.slots) bad.push(`${c.code} over its ${c.slots} seats`)
+  for (const sid of c.studentIds) if (!(c.classIds ?? []).includes(db.users.find((u: any) => u.id === sid)?.classId)) bad.push(`${c.code}: ${sid} not in an eligible class`)
+}
+for (const r of db.registrations) if (!sets.course.has(r.courseId) || !users.has(r.studentId)) bad.push(`registration ${r.id}`)
 for (const p of db.users.filter((u: any) => u.role === 'parent')) for (const w of p.wardIds) if (db.users.find((u: any) => u.id === w)?.role !== 'student') bad.push(`parent ward ${w}`)
 console.log(bad.length ? `${bad.length} issue(s):\n${bad.join("\n")}` : "Demo data OK: all references resolve and modules agree."); if (bad.length) process.exit(1)
 void feeOutstanding

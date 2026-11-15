@@ -9,6 +9,7 @@ import { can } from '../access'
 import { classLabel } from '../classes'
 import type { Material } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { isPan, KIND_LABEL } from '../registration'
 
 export function Courses() {
   const db = useDB()
@@ -18,14 +19,14 @@ export function Courses() {
   const f = useFilters(['cls', 'semester', 'teacher', 'credits'] as const)
   const defs = [
     { key: 'cls' as const, label: 'Classes', options: opts(all.map((c) => c.classId), (v) => classLabel(db.classes.find((x) => x.id === v))), hidden: user.role === 'student' },
-    { key: 'semester' as const, label: 'Semesters', options: opts(all.map((c) => c.semester), (v) => `Semester ${v}`) },
+    { key: 'semester' as const, label: 'Semesters', options: opts(all.map((c) => c.semester), (v) => (v === '0' ? 'University courses' : `Semester ${v}`)) },
     { key: 'teacher' as const, label: 'Teachers', options: opts(all.map((c) => c.facultyId), (v) => userName(db, v)), hidden: user.role === 'faculty' },
     { key: 'credits' as const, label: 'Credits', options: opts(all.map((c) => c.credits), (v) => `${v} credits`) },
   ]
   const courses = all.filter((c) => f.ok('cls', c.classId) && f.ok('semester', c.semester) && f.ok('teacher', c.facultyId) && f.ok('credits', c.credits)).filter((c) => matches(term, c.code, c.name, userName(db, c.facultyId), c.description))
   return (
     <>
-      <PageHeader actions={can(user, 'manageCourses') && <Link className="btn" to="/classes">Create course / assign teacher</Link>} search={{ value: term, onChange: setTerm, placeholder: 'Search courses or teachers…' }} title="Courses" subtitle={user.role === 'faculty' ? 'Courses you teach' : user.role === 'admin' ? 'All courses offered this semester' : 'Your enrolled courses this semester'} />
+      <PageHeader actions={can(user, 'manageCourses') && <Link className="btn" to="/registration">Create course / assign teacher</Link>} search={{ value: term, onChange: setTerm, placeholder: 'Search courses or teachers…' }} title="Courses" subtitle={user.role === 'faculty' ? 'Courses you teach' : user.role === 'admin' ? 'All courses offered this semester' : 'Your enrolled courses this semester'} />
       <FilterBar defs={defs} f={f} count={courses.length} noun="course" />
       <div className="grid grid-3">
         {courses.map((c, i) => {
@@ -39,6 +40,7 @@ export function Courses() {
                 <div>
                   <h3>{c.name}</h3>
                   <div className="small muted">{userName(db, c.facultyId)} · {c.credits} credits{user.role !== 'student' && c.classId ? ` · ${classLabel(db.classes.find((x) => x.id === c.classId))}` : ''}</div>
+                  {isPan(c) && <Badge tone={c.kind === 'FOUNDATION' ? 'info' : 'accent'}>{KIND_LABEL[c.kind!]}</Badge>}
                 </div>
                 {att ? (
                   <div>
