@@ -6,6 +6,7 @@ import { fmtDate, fmtDateTime, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
 import type { DB, PlacementDrive, User } from '../data/types'
 import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 type AppStatus = PlacementDrive['applications'][number]['status']
 const tone = (s: AppStatus) => (s === 'SELECTED' ? 'success' : s === 'REJECTED' ? 'danger' : s === 'INTERVIEW' ? 'accent' : s === 'SHORTLISTED' ? 'info' : 'warning')
@@ -27,7 +28,14 @@ export default function Placements() {
   const [creating, setCreating] = useState(false)
   const [manage, setManage] = useState<string | null>(null)
   const [draft, setDraft] = useState({ company: '', role: '', kind: 'Full-time' as PlacementDrive['kind'], ctc: '', minCgpa: 6, maxBacklogs: 0, deadline: '', description: '' })
-  const drives = db.drives.filter((d) => matches(term, d.company, d.role, d.kind, d.ctc, ...(canManage ? d.applications.map((a) => userName(db, a.studentId)) : []))).sort((a, b) => b.deadline - a.deadline)
+  const f = useFilters(['kind', 'state', 'elig'] as const)
+  const defs = [
+    { key: 'kind' as const, label: 'Types', options: opts(db.drives.map((d) => d.kind)) },
+    { key: 'state' as const, label: 'Drives', options: [{ value: 'open', label: 'Open for applications' }, { value: 'closed', label: 'Closed' }] },
+    { key: 'elig' as const, label: 'Eligibility', hidden: user.role !== 'student', options: [{ value: 'yes', label: 'Eligible for me' }, { value: 'applied', label: 'Applied' }, { value: 'no', label: 'Not eligible' }] },
+  ]
+  const drives = db.drives.filter((d) => f.ok('kind', d.kind) && f.ok('state', d.deadline > Date.now() ? 'open' : 'closed')
+    && (!f.values.elig || (f.values.elig === 'applied' ? d.applications.some((a) => a.studentId === user.id) : (driveEligibility(db, d, user).ok ? 'yes' : 'no') === f.values.elig))).filter((d) => matches(term, d.company, d.role, d.kind, d.ctc, ...(canManage ? d.applications.map((a) => userName(db, a.studentId)) : []))).sort((a, b) => b.deadline - a.deadline)
   const placed = new Set(db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'SELECTED').map((a) => a.studentId)))
   const students = db.users.filter((u) => u.role === 'student')
 
@@ -58,6 +66,7 @@ export default function Placements() {
         {isStudent && <Stat label="My CGPA" value={fmtCgpa(cgpaOf(db, user))} tone="brand" hint={`${backlogCountOf(user)} backlogs`} />}
         {isStudent && <Stat label="My applications" value={db.drives.filter((d) => d.applications.some((a) => a.studentId === user.id)).length} tone="info" />}
       </div>
+      <FilterBar defs={defs} f={f} count={drives.length} noun="drive" />
       <div className="grid grid-2">
         {drives.map((d) => {
           const el = isStudent ? driveEligibility(db, d, user) : null

@@ -5,6 +5,7 @@ import { Avatar, Badge, Card, Field, Modal, PageHeader, Stat } from '../componen
 import { inr } from '../lib'
 import { can } from '../access'
 import type { Alumnus } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 export default function Alumni() {
   const db = useDB()
@@ -15,7 +16,15 @@ export default function Alumni() {
   const [amount, setAmount] = useState(5000)
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState({ name: '', batch: new Date().getFullYear() - 1, program: 'BCA', company: '', role: '', city: '', email: '', mentor: false })
-  const list = db.alumni.filter((a) => (!mentorsOnly || a.mentor) && (a.name + a.company + a.city + a.program + a.batch).toLowerCase().includes(q.toLowerCase()))
+  const f = useFilters(['program', 'batch', 'city', 'company'] as const)
+  const defs = [
+    { key: 'program' as const, label: 'Programmes', options: opts(db.alumni.map((a) => a.program)) },
+    { key: 'batch' as const, label: 'Batches', options: opts(db.alumni.map((a) => a.batch), (v) => `Class of ${v}`) },
+    { key: 'city' as const, label: 'Cities', options: opts(db.alumni.map((a) => a.city).filter((c) => c !== '—')) },
+    { key: 'company' as const, label: 'Companies', options: opts(db.alumni.map((a) => a.company).filter((c) => c !== '—')) },
+  ]
+  const list = db.alumni.filter((a) => (!mentorsOnly || a.mentor) && (a.name + a.company + a.city + a.program + a.batch).toLowerCase().includes(q.toLowerCase())
+    && f.ok('program', a.program) && f.ok('batch', a.batch) && f.ok('city', a.city) && f.ok('company', a.company))
   const total = db.alumni.reduce((s, a) => s + a.donations, 0)
 
   const requestMentor = (a: Alumnus) => {
@@ -36,6 +45,7 @@ export default function Alumni() {
         <div className="search" style={{ maxWidth: 360 }}><Search size={16} className="muted" /><input placeholder="Search name, company, city, batch" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <button className={`chip ${mentorsOnly ? 'active' : ''}`} onClick={() => setMentorsOnly((v) => !v)}>Mentors only</button>
       </div>
+      <FilterBar defs={defs} f={f} count={list.length} noun="alumnus" plural="alumni" />
       <div className="grid grid-3">
         {list.map((a) => (
           <Card key={a.id}>

@@ -180,6 +180,29 @@ career counselling and more. Students book a slot; the owning office confirms (w
 link), declines or completes it. Confidential services hide the student's name from
 notifications and the audit log.
 
+## Filters on every list
+
+Every list page has a row of filter dropdowns (built from the values actually in the data), a live result count and a **Clear filters** button, alongside the search box.
+
+| List | Filters |
+|---|---|
+| Students (User management, classes, attendance, backlog registration, hostel waiting list, gate passes) | programme, batch/year, class, semester |
+| Faculty & staff (User management, HR) | department, office |
+| User management | also residence (hostel/day scholar), gender, status |
+| Classes | programme, batch, semester, mentor |
+| Courses / Feedback | class, semester, teacher, credits |
+| Assignments, quizzes, exams, result sheets | course/class, status, format/kind |
+| Admissions | programme, category, gender, residence |
+| Library | subject, shelf, availability |
+| Alumni | programme, batch, city, company |
+| Placements | type, open/closed, eligibility (students) |
+| Help Center tickets / appointment bookings | category, priority, status / service, status |
+| Hostel | room type, occupancy; leave status |
+| Events, polls, discussions | organiser, venue; open/closed, voted; course, author |
+| HR, procurement, audit log | leave type, status; category, department, location; action, user, date |
+
+Classes are shown as compact tiles with a distinct colour per class; the same colour marks the class chips on Results and Timetable.
+
 ## Modules
 
 | Area | Student | Faculty | Admin |

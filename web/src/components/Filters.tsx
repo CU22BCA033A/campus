@@ -26,7 +26,7 @@ export function useFilters<K extends string>(keys: readonly K[]) {
 }
 
 /** A row of filter dropdowns with a result count and a clear button. */
-export function FilterBar<K extends string>({ defs, f, count, noun = 'result' }: { defs: (FilterDef & { key: K })[]; f: ReturnType<typeof useFilters<K>>; count?: number; noun?: string }) {
+export function FilterBar<K extends string>({ defs, f, count, noun = 'result', plural }: { defs: (FilterDef & { key: K })[]; f: ReturnType<typeof useFilters<K>>; count?: number; noun?: string; plural?: string }) {
   const shown = defs.filter((d) => !d.hidden && d.options.length > 0)
   if (!shown.length && count === undefined) return null
   return (
@@ -39,7 +39,7 @@ export function FilterBar<K extends string>({ defs, f, count, noun = 'result' }:
         </select>
       ))}
       {f.active > 0 && <button className="btn btn-ghost btn-sm" onClick={f.clear}><X size={12} /> Clear filters</button>}
-      {count !== undefined && <span className="small muted">{count} {count === 1 ? noun : noun.endsWith('s') ? noun + 'es' : noun + 's'}</span>}
+      {count !== undefined && <span className="small muted">{count} {count === 1 ? noun : plural ?? (noun.endsWith('s') ? noun + 'es' : noun + 's')}</span>}
     </div>
   )
 }

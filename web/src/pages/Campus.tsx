@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, Progress, Tabs } from '..
 import { fmtDateTime, matches, timeAgo, userName } from '../lib'
 import { can } from '../access'
 import type { Club, Notice } from '../data/types'
+import { FilterBar, opts as optList, useFilters } from '../components/Filters'
 
 /* ---------------- Notice board ---------------- */
 export function Notices() {
@@ -83,6 +84,11 @@ export function Events() {
     mine: db.events.filter((e) => e.rsvps.includes(user.id)),
     past: db.events.filter((e) => e.startsAt <= now),
   }
+  const ef = useFilters(['club', 'venue'] as const)
+  const eventDefs = [
+    { key: 'club' as const, label: 'Organisers', options: [{ value: 'none', label: 'University (no club)' }, ...optList(db.events.map((e) => e.clubId), (id) => db.clubs.find((c) => c.id === id)?.name ?? id)] },
+    { key: 'venue' as const, label: 'Venues', options: optList(db.events.map((e) => e.venue)) },
+  ]
   const toggle = (id: string) => update((d) => { const e = d.events.find((x) => x.id === id)!; e.rsvps = e.rsvps.includes(user.id) ? e.rsvps.filter((x) => x !== user.id) : [...e.rsvps, user.id] })
   const create = () => {
     if (!draft.title || !draft.when) return
@@ -95,9 +101,10 @@ export function Events() {
     <>
       <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Events" subtitle="What's happening on campus" actions={can(user, 'createEvents') && <button className="btn" onClick={() => setCreating(true)}><CalendarPlus size={14} /> Create event</button>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'upcoming', label: 'Upcoming', count: lists.upcoming.length }, { id: 'mine', label: 'My RSVPs', count: lists.mine.length }, { id: 'past', label: 'Past' }]} />
+      <FilterBar defs={eventDefs} f={ef} />
       {lists[tab].length === 0 && <Card><Empty text="No events here." /></Card>}
       <div className="grid grid-3">
-        {lists[tab].filter((e) => matches(term, e.title, e.description, e.venue, db.clubs.find((c) => c.id === e.clubId)?.name)).sort((a, b) => a.startsAt - b.startsAt).map((e) => {
+        {lists[tab].filter((e) => ef.ok('club', e.clubId ?? 'none') && ef.ok('venue', e.venue)).filter((e) => matches(term, e.title, e.description, e.venue, db.clubs.find((c) => c.id === e.clubId)?.name)).sort((a, b) => a.startsAt - b.startsAt).map((e) => {
           const going = e.rsvps.includes(user.id)
           const full = e.rsvps.length >= e.capacity
           return (
@@ -220,6 +227,11 @@ export function Polls() {
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState(['', ''])
   const [term, setTerm] = useState('')
+  const pf = useFilters(['state', 'voted'] as const)
+  const pollDefs = [
+    { key: 'state' as const, label: 'Polls', options: [{ value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }] },
+    { key: 'voted' as const, label: 'Votes', options: [{ value: 'yes', label: 'I voted' }, { value: 'no', label: 'Not voted yet' }] },
+  ]
   const vote = (pid: string, i: number) => update((d) => { d.polls.find((p) => p.id === pid)!.votes[user.id] = i })
   const create = () => {
     const o = opts.filter((x) => x.trim())
@@ -230,8 +242,9 @@ export function Polls() {
   return (
     <>
       <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Polls & Surveys" subtitle="Quick opinions from the campus community" actions={can(user, 'createPolls') && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New poll</button>} />
+      <FilterBar defs={pollDefs} f={pf} />
       <div className="grid grid-2">
-        {db.polls.filter((p) => matches(term, p.question, ...p.options, userName(db, p.createdBy))).map((p) => {
+        {db.polls.filter((p) => pf.ok('state', p.closesAt > Date.now() ? 'open' : 'closed') && pf.ok('voted', p.votes[user.id] !== undefined ? 'yes' : 'no')).filter((p) => matches(term, p.question, ...p.options, userName(db, p.createdBy))).map((p) => {
           const total = Object.keys(p.votes).length
           const mine = p.votes[user.id]
           const closed = p.closesAt < Date.now()

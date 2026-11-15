@@ -5,6 +5,8 @@ import { bedLetters, bedOf, freeBeds, hostelsForGender, isChiefWarden, managedHo
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, fmtDateTime, inr, timeAgo, userName, matches } from '../lib'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 import type { MealCoupon } from '../data/types'
 
 const MEALS: MealCoupon['meal'][] = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
@@ -109,6 +111,9 @@ function HostelAdmin() {
   const [term, setTerm] = useState('')
   const [roomDraft, setRoomDraft] = useState<{ id?: string; number: string; capacity: number; type: 'AC' | 'Non-AC'; feePerSem: number } | null>(null)
   const [hostelDraft, setHostelDraft] = useState<{ id?: string; name: string; gender: 'Boys' | 'Girls'; wardenId: string } | null>(null)
+  const rf = useFilters(['type', 'occ'] as const)
+  const wf = useFilters(STUDENT_KEYS)
+  const lf = useFilters(['status'] as const)
   const hostel = hostels.find((h) => h.id === hostelId) ?? hostels[0]
   if (!hostel) return <><PageHeader title="Hostel & mess" /><Card><Empty text="No hostel is assigned to you. Contact the Chief Warden." /></Card></>
   const rooms = db.rooms.filter((r) => r.hostelId === hostel.id)
@@ -118,6 +123,15 @@ function HostelAdmin() {
   const occupied = rooms.reduce((s, r) => s + r.occupants.length, 0)
   const leaves = db.hostelLeaves.filter((l) => residents.has(l.studentId))
   const wardens = db.users.filter((u) => u.role === 'admin' && u.office === 'hostel')
+  const occOf = (r: (typeof rooms)[number]) => (r.occupants.length >= r.capacity ? 'full' : r.occupants.length === 0 ? 'empty' : 'partial')
+  const roomDefs = [
+    { key: 'type' as const, label: 'Room types', options: opts(rooms.map((r) => r.type)) },
+    { key: 'occ' as const, label: 'Occupancy', options: [{ value: 'empty', label: 'Empty' }, { value: 'partial', label: 'Has free beds' }, { value: 'full', label: 'Full' }] },
+  ]
+  const shownRooms = rooms.filter((r) => rf.ok('type', r.type) && rf.ok('occ', occOf(r)) && matches(term, r.number, r.type, ...r.occupants.map((o) => userName(db, o))))
+  const shownWaiting = waiting.filter((s) => studentOk(wf, s) && matches(term, s.name, s.rollNo))
+  const leaveStatus = (l: (typeof leaves)[number]) => (l.wardenStatus === 'APPROVED' ? 'approved' : l.wardenStatus === 'REJECTED' || l.parentStatus === 'REJECTED' ? 'rejected' : 'pending')
+  const shownLeaves = leaves.filter((l) => lf.ok('status', leaveStatus(l)) && matches(term, userName(db, l.studentId), l.reason))
 
   const allot = (studentId: string, roomId: string, bed?: string) => {
     const r = db.rooms.find((x) => x.id === roomId)!
@@ -224,8 +238,9 @@ function HostelAdmin() {
             </div>
           </div>
           {rooms.length === 0 && <Card><Empty text="No rooms yet. Add the first room." /></Card>}
+          <FilterBar defs={roomDefs} f={rf} count={shownRooms.length} noun="room" />
           <div className="grid grid-3">
-            {rooms.filter((r) => matches(term, r.number, r.type, ...r.occupants.map((o) => userName(db, o)))).map((r) => (
+            {shownRooms.map((r) => (
               <Card key={r.id} title={r.number} action={<div className="row gap"><Badge tone={r.occupants.length >= r.capacity ? 'danger' : 'success'}>{r.occupants.length}/{r.capacity}</Badge><button className="icon-btn" aria-label={`Edit room ${r.number}`} onClick={() => setRoomDraft({ id: r.id, number: r.number, capacity: r.capacity, type: r.type, feePerSem: r.feePerSem })}><Pencil size={14} /></button></div>}>
                 <div className="small muted">{r.type} · {inr(r.feePerSem)}/sem</div>
                 <div className="list" style={{ marginTop: 8 }}>
@@ -254,10 +269,11 @@ function HostelAdmin() {
       {tab === 'night' && <NightRollCallPanel hostelId={hostel.id} term={term} />}
       {tab === 'waiting' && (
         <Card title={`${hostel.name}: students who opted for the hostel`} action={<span className="small muted">Set by the Admission department / Registrar</span>}>
-          {waiting.length === 0 ? <Empty text="Everyone who opted for this hostel has a room." /> : (
+          {waiting.length === 0 ? <Empty text="Everyone who opted for this hostel has a room." /> : (<>
+            <FilterBar defs={studentDefs(db, waiting)} f={wf} count={shownWaiting.length} noun="student" />
             <div className="table-wrap"><table>
               <thead><tr><th>Student</th><th>Class</th><th>Phone</th><th /></tr></thead>
-              <tbody>{waiting.filter((s) => matches(term, s.name, s.rollNo)).map((s) => (
+              <tbody>{shownWaiting.map((s) => (
                 <tr key={s.id}>
                   <td>{s.name}<div className="small muted">{s.rollNo} · {s.gender}</div></td>
                   <td className="small">{s.program} {s.batch} · Sem {s.semester}</td>
@@ -266,15 +282,16 @@ function HostelAdmin() {
                 </tr>
               ))}</tbody>
             </table></div>
-          )}
+          </>)}
         </Card>
       )}
       {tab === 'leaves' && (
         <Card>
-          {leaves.length === 0 ? <Empty text="No leave requests from this hostel." /> : (
+          {leaves.length === 0 ? <Empty text="No leave requests from this hostel." /> : (<>
+            <FilterBar defs={[{ key: 'status' as const, label: 'Statuses', options: [{ value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }] }]} f={lf} count={shownLeaves.length} noun="request" />
             <div className="table-wrap"><table>
               <thead><tr><th>Student</th><th>Reason</th><th>Dates</th><th>Parent</th><th>Warden</th><th /></tr></thead>
-              <tbody>{leaves.filter((l) => matches(term, userName(db, l.studentId), l.reason)).sort((a, b) => b.createdAt - a.createdAt).map((l) => (
+              <tbody>{shownLeaves.sort((a, b) => b.createdAt - a.createdAt).map((l) => (
                 <tr key={l.id}>
                   <td>{userName(db, l.studentId)}</td><td>{l.reason}</td><td className="small">{fmtDateTime(l.from)} → {fmtDateTime(l.to)}</td>
                   <td><Badge tone={l.parentStatus === 'APPROVED' ? 'success' : l.parentStatus === 'REJECTED' ? 'danger' : 'warning'}>{l.parentStatus}</Badge></td>
@@ -283,7 +300,7 @@ function HostelAdmin() {
                 </tr>
               ))}</tbody>
             </table></div>
-          )}
+          </>)}
         </Card>
       )}
       {tab === 'mess' && (

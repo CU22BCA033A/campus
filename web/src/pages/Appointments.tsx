@@ -5,6 +5,7 @@ import { Badge, Card, Empty, Field, Modal, SearchBox, Stat, Tabs } from '../comp
 import { OFFICES, officeUsers, persona } from '../access'
 import { DAYS, fmtDateTime, matches, timeAgo, userName } from '../lib'
 import type { Appointment, DB, Office, ServiceOffering, User } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const CATEGORIES: ServiceOffering['category'][] = ['Wellbeing', 'Academic', 'Administrative', 'Career', 'Financial', 'Leadership']
 const tone = (s: Appointment['status']) => (s === 'CONFIRMED' ? 'success' : s === 'COMPLETED' ? 'info' : s === 'REQUESTED' ? 'warning' : 'neutral')
@@ -47,9 +48,14 @@ export default function AppointmentsPanel() {
   const [deciding, setDeciding] = useState<{ a: Appointment; action: 'CONFIRMED' | 'DECLINED' | 'COMPLETED' } | null>(null)
   const [note, setNote] = useState('')
 
+  const qf = useFilters(['service', 'status'] as const)
+  const queueDefs = [
+    { key: 'service' as const, label: 'Services', options: opts(mine.map((s) => s.id), (id) => db.services.find((s) => s.id === id)?.title ?? id) },
+    { key: 'status' as const, label: 'Statuses', options: opts(db.appointments.filter((a) => mine.some((s) => s.id === a.serviceId)).map((a) => a.status), (v) => v[0] + v.slice(1).toLowerCase()) },
+  ]
   const services = db.services.filter((s) => s.active && (cat === 'All' || s.category === cat) && matches(q, s.title, s.description, providerName(db, s), s.category, s.location))
   const myAppts = db.appointments.filter((a) => a.studentId === me.id).sort((a, b) => b.at - a.at)
-  const queue = db.appointments.filter((a) => mine.some((s) => s.id === a.serviceId)).filter((a) => matches(q, userName(db, a.studentId), db.users.find((u) => u.id === a.studentId)?.rollNo, a.reason, db.services.find((s) => s.id === a.serviceId)?.title)).sort((a, b) => Number(b.status === 'REQUESTED') - Number(a.status === 'REQUESTED') || a.at - b.at)
+  const queue = db.appointments.filter((a) => mine.some((s) => s.id === a.serviceId)).filter((a) => qf.ok('service', a.serviceId) && qf.ok('status', a.status)).filter((a) => matches(q, userName(db, a.studentId), db.users.find((u) => u.id === a.studentId)?.rollNo, a.reason, db.services.find((s) => s.id === a.serviceId)?.title)).sort((a, b) => Number(b.status === 'REQUESTED') - Number(a.status === 'REQUESTED') || a.at - b.at)
 
   const book = () => {
     if (!booking || !slot || !reason.trim()) return
@@ -136,6 +142,7 @@ export default function AppointmentsPanel() {
             <Stat label="Completed" value={queue.filter((a) => a.status === 'COMPLETED').length} tone="info" />
             <Stat label="Services offered" value={mine.length} tone="brand" />
           </div>
+          <FilterBar defs={queueDefs} f={qf} count={queue.length} noun="booking" />
           <Card title="Booking queue">
             {queue.length === 0 ? <Empty text="No bookings yet." /> : (
               <div className="table-wrap"><table>

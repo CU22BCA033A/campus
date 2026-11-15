@@ -3,6 +3,7 @@ import { MessageSquare, Send } from 'lucide-react'
 import { uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, PageHeader, SearchBox } from '../components/ui'
 import { courseName, coursesFor, timeAgo, matches, userName } from '../lib'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 /** courseId: a course id shows that course's thread; undefined shows everything (campus feed). */
 export function Discussion({ courseId }: { courseId?: string }) {
@@ -12,7 +13,14 @@ export function Discussion({ courseId }: { courseId?: string }) {
   const [reply, setReply] = useState<Record<string, string>>({})
   const [term, setTerm] = useState('')
   const allowed = new Set(coursesFor(db, user).map((c) => c.id))
+  const f = useFilters(['course', 'author'] as const)
+  const visiblePosts = db.posts.filter((p) => (courseId === undefined ? true : p.courseId === courseId) && (p.courseId === null || allowed.has(p.courseId) || user.role === 'admin'))
+  const defs = [
+    { key: 'course' as const, label: 'Courses', hidden: courseId !== undefined, options: [{ value: 'campus', label: 'Campus-wide' }, ...opts(visiblePosts.map((p) => p.courseId ?? undefined), (id) => courseName(db, id))] },
+    { key: 'author' as const, label: 'Authors', options: [{ value: 'student', label: 'Students' }, { value: 'faculty', label: 'Faculty' }, { value: 'admin', label: 'Staff' }] },
+  ]
   const posts = db.posts
+    .filter((p) => f.ok('course', p.courseId ?? 'campus') && f.ok('author', db.users.find((u) => u.id === p.authorId)?.role))
     .filter((p) => matches(term, p.text, userName(db, p.authorId), ...p.replies.map((r) => r.text))).filter((p) => (courseId === undefined ? true : p.courseId === courseId) && (p.courseId === null || allowed.has(p.courseId) || user.role === 'admin'))
     .sort((a, b) => b.createdAt - a.createdAt)
   const author = (id: string) => db.users.find((u) => u.id === id)!
@@ -41,6 +49,7 @@ export function Discussion({ courseId }: { courseId?: string }) {
           </div>
         </div>
       </Card>
+      <FilterBar defs={defs} f={f} count={posts.length} noun="post" />
       {posts.length === 0 && <Card><Empty icon={<MessageSquare />} text="No discussions yet. Start one!" /></Card>}
       {posts.map((p) => {
         const a = author(p.authorId)

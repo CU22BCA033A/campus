@@ -168,7 +168,15 @@ export function AdminReports() {
 export function AuditLog() {
   const db = useDB()
   const [q, setQ] = useState('')
-  const rows = db.audit.filter((a) => (a.action + a.detail + (db.users.find((u) => u.id === a.actorId)?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
+  const af = useFilters(['action', 'user', 'when'] as const)
+  const DAY = 86_400_000
+  const auditDefs = [
+    { key: 'action' as const, label: 'Actions', options: opts(db.audit.map((a) => a.action)) },
+    { key: 'user' as const, label: 'Users', options: opts(db.audit.map((a) => a.actorId), (id) => db.users.find((u) => u.id === id)?.name ?? id) },
+    { key: 'when' as const, label: 'Dates', options: [{ value: '1', label: 'Last 24 hours' }, { value: '7', label: 'Last 7 days' }, { value: '30', label: 'Last 30 days' }] },
+  ]
+  const now = Date.now()
+  const rows = db.audit.filter((a) => af.ok('action', a.action) && af.ok('user', a.actorId) && (!af.values.when || now - a.at <= Number(af.values.when) * DAY)).filter((a) => (a.action + a.detail + (db.users.find((u) => u.id === a.actorId)?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
   const exportCsv = () => {
     const lines = [['Time', 'User', 'Action', 'Detail'], ...rows.map((a) => [new Date(a.at).toISOString(), db.users.find((u) => u.id === a.actorId)?.name ?? a.actorId, a.action, `"${a.detail.replace(/"/g, '""')}"`])]
     const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([lines.map((r) => r.join(',')).join('\n')], { type: 'text/csv' })); el.download = 'audit-log.csv'; el.click()
@@ -178,6 +186,7 @@ export function AuditLog() {
       <PageHeader title="Audit log" subtitle="Who did what, and when, across every module" actions={<button className="btn btn-outline" onClick={exportCsv}><Download size={14} /> Export CSV</button>} />
       <Card>
         <div className="search" style={{ maxWidth: 360, marginBottom: 12 }}><Search size={16} className="muted" /><input placeholder="Filter by user, action or detail" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <FilterBar defs={auditDefs} f={af} count={rows.length} noun="entry" plural="entries" />
         <div className="table-wrap"><table>
           <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
           <tbody>{rows.slice(0, 300).map((a) => <tr key={a.id}><td className="small">{new Date(a.at).toLocaleString('en-IN')}</td><td>{db.users.find((u) => u.id === a.actorId)?.name ?? a.actorId}</td><td><Badge tone="info">{a.action}</Badge></td><td style={{ whiteSpace: 'normal' }}>{a.detail}</td></tr>)}</tbody>

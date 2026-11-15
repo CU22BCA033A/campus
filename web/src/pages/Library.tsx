@@ -5,6 +5,7 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../com
 import { fmtDate, inr, userName } from '../lib'
 import { can } from '../access'
 import type { Book, BookLoan, DB } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const LOAN_DAYS = 14
 const FINE_PER_DAY = 5
@@ -24,7 +25,14 @@ export default function Library() {
   const [issue, setIssue] = useState({ bookId: '', member: '' })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
-  const books = db.books.filter((b) => (b.title + b.author + b.isbn + b.subject).toLowerCase().includes(q.toLowerCase()))
+  const bf = useFilters(['subject', 'shelf', 'avail'] as const)
+  const bookDefs = [
+    { key: 'subject' as const, label: 'Subjects', options: opts(db.books.map((b) => b.subject)) },
+    { key: 'shelf' as const, label: 'Shelves', options: opts(db.books.map((b) => b.shelf)) },
+    { key: 'avail' as const, label: 'Availability', options: [{ value: 'in', label: 'Available now' }, { value: 'out', label: 'All copies out' }] },
+  ]
+  const books = db.books.filter((b) => (b.title + b.author + b.isbn + b.subject).toLowerCase().includes(q.toLowerCase())
+    && bf.ok('subject', b.subject) && bf.ok('shelf', b.shelf) && bf.ok('avail', available(db, b) > 0 ? 'in' : 'out'))
   const myLoans = db.loans.filter((l) => l.userId === user.id).sort((a, b) => Number(!!a.returnedAt) - Number(!!b.returnedAt) || a.dueAt - b.dueAt)
   const active = db.loans.filter((l) => !l.returnedAt)
 
@@ -71,6 +79,7 @@ export default function Library() {
       {tab === 'catalog' && (
         <Card>
           <div className="search" style={{ maxWidth: 420, marginBottom: 12 }}><Search size={16} className="muted" /><input placeholder="Search title, author, ISBN or subject" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <FilterBar defs={bookDefs} f={bf} count={books.length} noun="book" />
           {books.length === 0 ? <Empty text="No books match." /> : (
             <div className="table-wrap"><table>
               <thead><tr><th>Title</th><th>Subject</th><th>Shelf</th><th>Available</th><th /></tr></thead>

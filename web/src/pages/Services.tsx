@@ -6,6 +6,8 @@ import { classLabel } from '../classes'
 import { feeOutstanding, fmtDate, fmtDateTime, inr, matches, userName } from '../lib'
 import { can, officeUsers } from '../access'
 import type { FeeItem } from '../data/types'
+import { FilterBar, opts as optList, useFilters } from '../components/Filters'
+import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 
 /* ---------------- Fees ---------------- */
 // Gateways are selectable by the payer; each shows its convenience charge.
@@ -302,7 +304,13 @@ export function GatePass() {
   const [draft, setDraft] = useState({ reason: '', out: '', back: '' })
   const [term, setTerm] = useState('')
   const isStudent = user.role === 'student'
-  const list = db.gatePasses.filter((g) => matches(term, g.reason, g.status, userName(db, g.studentId), db.users.find((u) => u.id === g.studentId)?.rollNo)).filter((g) => !isStudent || g.studentId === user.id).sort((a, b) => b.outAt - a.outAt)
+  const gf = useFilters(['status', ...STUDENT_KEYS] as const)
+  const gateStudents = db.users.filter((u) => db.gatePasses.some((g) => g.studentId === u.id))
+  const gateDefs = [
+    { key: 'status' as const, label: 'Statuses', options: optList(db.gatePasses.map((g) => g.status), (v) => v[0] + v.slice(1).toLowerCase()) },
+    ...studentDefs(db, gateStudents).map((d) => ({ ...d, hidden: isStudent })),
+  ]
+  const list = db.gatePasses.filter((g) => gf.ok('status', g.status) && (isStudent || studentOk(gf, db.users.find((u) => u.id === g.studentId)))).filter((g) => matches(term, g.reason, g.status, userName(db, g.studentId), db.users.find((u) => u.id === g.studentId)?.rollNo)).filter((g) => !isStudent || g.studentId === user.id).sort((a, b) => b.outAt - a.outAt)
 
   const apply = () => {
     if (!draft.reason || !draft.out || !draft.back) return
@@ -319,6 +327,7 @@ export function GatePass() {
   return (
     <>
       <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Gate pass" subtitle={isStudent ? 'Request permission to leave campus' : 'Review student gate pass requests'} actions={isStudent && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Request gate pass</button>} />
+      <FilterBar defs={gateDefs} f={gf} count={list.length} noun="gate pass" plural="gate passes" />
       {list.length === 0 && <Card><Empty icon={<DoorOpen />} text="No gate pass requests." /></Card>}
       <div className="grid grid-2">
         {list.map((g) => (

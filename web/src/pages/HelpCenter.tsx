@@ -7,6 +7,7 @@ import { OFFICES, persona, TICKET_OFFICE, officeUsers } from '../access'
 import type { DB, Ticket } from '../data/types'
 import AppointmentsPanel from './Appointments'
 import { matches } from '../lib'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const CATS: { id: Ticket['category']; sla: number }[] = [
   { id: 'Grievance', sla: 72 }, { id: 'IT Support', sla: 24 }, { id: 'Maintenance', sla: 48 },
@@ -39,7 +40,13 @@ export default function HelpCenter() {
   const [cert, setCert] = useState<Ticket | null>(null)
 
   const visible = db.tickets.filter((t) => handles(t) || t.raisedBy === user.id || t.assignedTo === user.id)
-  const list = visible.filter((t) => matches(q, t.number, t.subject, t.description, t.category, t.anonymous && t.raisedBy !== user.id ? '' : userName(db, t.raisedBy))).filter((t) => (tab === 'open' ? !['RESOLVED', 'CLOSED'].includes(t.status) : ['RESOLVED', 'CLOSED'].includes(t.status))).sort((a, b) => b.createdAt - a.createdAt)
+  const f = useFilters(['category', 'priority', 'status'] as const)
+  const defs = [
+    { key: 'category' as const, label: 'Categories', options: opts(visible.map((t) => t.category)) },
+    { key: 'priority' as const, label: 'Priorities', options: opts(visible.map((t) => t.priority)) },
+    { key: 'status' as const, label: 'Statuses', options: opts(visible.map((t) => t.status), (v) => v.replace('_', ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())) },
+  ]
+  const list = visible.filter((t) => f.ok('category', t.category) && f.ok('priority', t.priority) && f.ok('status', t.status)).filter((t) => matches(q, t.number, t.subject, t.description, t.category, t.anonymous && t.raisedBy !== user.id ? '' : userName(db, t.raisedBy))).filter((t) => (tab === 'open' ? !['RESOLVED', 'CLOSED'].includes(t.status) : ['RESOLVED', 'CLOSED'].includes(t.status))).sort((a, b) => b.createdAt - a.createdAt)
   const t = view ? db.tickets.find((x) => x.id === view) : null
 
   const create = () => {
@@ -80,6 +87,7 @@ export default function HelpCenter() {
         <Stat label="Resolved" value={visible.filter((x) => x.status === 'RESOLVED' || x.status === 'CLOSED').length} tone="success" />
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'open', label: 'Active' }, { id: 'resolved', label: 'Resolved' }]} />
+      <FilterBar defs={defs} f={f} count={list.length} noun="ticket" />
       <Card>
         {list.length === 0 ? <Empty text="No tickets." /> : (
           <div className="table-wrap"><table>
