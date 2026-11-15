@@ -23,23 +23,31 @@ export function Transcript({ studentId, embedded = false }: { studentId: string;
   const prior = student.priorRecord
   const current = coursesFor(db, student).filter((c) => !sems.some((s) => s.rows.some((x) => x.course.id === c.id)))
   const credits = sems.reduce((t, s) => t + s.earned, 0) + (prior?.credits ?? 0)
+  const cls = db.classes.find((c) => c.id === student.classId)
+  // Print one semester's grade card, or the full transcript (only = null).
+  const [only, setOnly] = useState<number | null>(null)
+  const printCard = (sem: number | null) => { setOnly(sem); setTimeout(() => { window.print(); setOnly(null) }, 50) }
 
   return (
     <>
-      {!embedded && <PageHeader title="Grades & transcript" subtitle="Published results only: internal + external = final mark → grade, SGPA and CGPA" actions={<button className="btn btn-outline" onClick={() => window.print()}><Printer size={14} /> Print transcript</button>} />}
-      <div className="grid grid-4">
+      {!embedded && <PageHeader title="Grades & transcript" subtitle="Published results only: internal + external = final mark → grade, SGPA and CGPA" actions={<button className="btn btn-outline" onClick={() => printCard(null)}><Printer size={14} /> Print transcript</button>} />}
+      <div className="print-only print-head">
+        <div className="row between"><div><h1 style={{ margin: 0 }}>Campus Portal University</h1><div>{only === null ? 'Consolidated transcript' : `Grade card · Semester ${only}`}</div></div><div className="small" style={{ textAlign: 'right' }}>Issued {new Date().toLocaleDateString('en-IN')}<br />Registrar of Evaluation</div></div>
+        <table style={{ marginTop: 10 }}><tbody><tr><td><strong>{student.name}</strong></td><td>Roll no. {student.rollNo}</td><td>{student.program} · Batch {student.batch}{cls ? ` · Section ${cls.section}` : ''}</td><td>CGPA <strong>{fmtCgpa(cgpa)}</strong></td></tr></tbody></table>
+      </div>
+      <div className="grid grid-4 no-print">
         <Stat label="CGPA" value={fmtCgpa(cgpa)} tone="brand" hint={prior?.semesters ? `Includes Sem 1–${prior.semesters} record` : undefined} />
         <Stat label={sems.length ? `SGPA (Sem ${sems[sems.length - 1].semester})` : 'SGPA'} value={fmtCgpa(sems.length ? sems[sems.length - 1].sgpa : null)} tone="success" />
         <Stat label="Credits earned" value={credits} tone="info" />
         <Stat label="Backlogs" value={backlogCountOf(student)} tone={backlogCountOf(student) ? 'danger' : 'success'} hint={(student.backlogCourses ?? []).map((c) => db.courses.find((x) => x.id === c)?.code).join(', ') || undefined} />
       </div>
       {prior && prior.semesters > 0 && (
-        <Card title={`Semesters 1–${prior.semesters} (record before the portal)`}>
+        <Card title={`Semesters 1–${prior.semesters} (earlier institution / lateral entry)`}>
           <div className="row gap wrap small"><Badge tone="brand">CGPA {prior.cgpa.toFixed(2)}</Badge><Badge>{prior.credits} credits</Badge>{prior.backlogs > 0 && <Badge tone="danger">{prior.backlogs} backlog(s)</Badge>}<span className="muted">Maintained by the Registrar of Evaluation</span></div>
         </Card>
       )}
       {sems.map((s) => (
-        <Card key={s.semester} title={`Semester ${s.semester}`} action={<div className="row gap"><Badge tone="success">SGPA {fmtCgpa(s.sgpa)}</Badge><Badge>{s.earned}/{s.credits} credits earned</Badge></div>}>
+        <Card key={s.semester} className={only !== null && only !== s.semester ? 'no-print' : ''} title={`Semester ${s.semester}`} action={<div className="row gap"><Badge tone="success">SGPA {fmtCgpa(s.sgpa)}</Badge><Badge>{s.earned}/{s.credits} credits earned</Badge>{!embedded && <button className="btn btn-ghost btn-sm" onClick={() => printCard(s.semester)}><Printer size={12} /> Grade card</button>}</div>}>
           <div className="table-wrap"><table>
             <thead><tr><th>Course</th><th>Credits</th><th>Internal</th><th>External</th><th>Final</th><th>Grade</th><th>Points</th><th>Result</th></tr></thead>
             <tbody>{s.rows.map(({ sheet, course, row }) => (
@@ -58,7 +66,7 @@ export function Transcript({ studentId, embedded = false }: { studentId: string;
         </Card>
       ))}
       {current.length > 0 && (
-        <Card title={`Semester ${student.semester}: results not yet published`}>
+        <Card className="no-print" title={`Semester ${student.semester}: results not yet published`}>
           <div className="list">{current.map((c) => (
             <div key={c.id} className="list-item"><div className="grow"><strong>{c.code}</strong> {c.name}<div className="small muted">{c.credits} credits · {userName(db, c.facultyId)}</div></div><Badge>Not yet published</Badge></div>
           ))}</div>

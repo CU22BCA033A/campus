@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Download, Pencil, Plus, Search } from 'lucide-react'
 import { audit, switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
-import { attendanceStats, feeOutstanding, inr, matches } from '../lib'
+import { attendanceStats, feeOutstanding, inr, matches, isCurrentCourse } from '../lib'
 import { classLabel, resyncRosters } from '../classes'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { officeLabel, staffDefs, studentDefs, studentOk } from '../facets'
@@ -149,7 +149,7 @@ export function AdminReports() {
         </Card>
         <Card title="Course-wise average attendance">
           <div className="list">
-            {db.courses.map((c) => {
+            {db.courses.filter((c) => isCurrentCourse(db, c)).map((c) => {
               const avg = Math.round(c.studentIds.reduce((s, id) => s + attendanceStats(db, id, c.id).pct, 0) / c.studentIds.length)
               return (
                 <div key={c.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>

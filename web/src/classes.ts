@@ -27,9 +27,9 @@ export function resyncRosters(d: DB) {
 }
 
 /** A class's current-semester results, from the result sheets (internal + external = final). */
-export function classResults(db: DB, cls: ClassGroup) {
-  const courses = classCourses(db, cls)
-  const sheets = courses.map((course) => ({ course, sheet: sheetFor(db, course.id, cls.semester) }))
+export function classResults(db: DB, cls: ClassGroup, semester = cls.semester) {
+  const courses = db.courses.filter((c) => c.classId === cls.id && c.semester === semester)
+  const sheets = courses.map((course) => ({ course, sheet: sheetFor(db, course.id, semester) }))
   const students = classStudents(db, cls.id).filter((s) => s.status === 'ACTIVE')
   const rowsBySheet = new Map(sheets.filter((x) => x.sheet).map((x) => [x.sheet!.id, sheetRows(db, x.sheet!)]))
   const rows = students.map((s) => {
@@ -45,7 +45,29 @@ export function classResults(db: DB, cls: ClassGroup) {
   const missingExam = sheets.filter((x) => !x.sheet).map((x) => x.course.code) // no result sheet yet
   const unpublished = sheets.filter((x) => x.sheet && x.sheet.status !== 'PUBLISHED').map((x) => x.course.code)
   const ready = courses.length > 0 && missingExam.length === 0 && unpublished.length === 0
-  return { courses, sheets, rows, ready, missingExam, unpublished }
+  return { semester, courses, sheets, rows, ready, missingExam, unpublished }
+}
+
+/** Analysis of a published class result: pass rate, averages, grade spread, per-course figures and rank list. */
+export function classAnalysis(r: ReturnType<typeof classResults>) {
+  const GRADES = ['O', 'A+', 'A', 'B+', 'B', 'C', 'F', 'AB']
+  const graded = r.rows.flatMap((x) => x.cells.filter((c) => c.published && c.grade))
+  const grades = GRADES.map((g) => ({ grade: g, count: graded.filter((c) => c.grade === g).length })).filter((g) => g.count || !['AB'].includes(g.grade))
+  const withSgpa = r.rows.filter((x) => x.sgpa !== null)
+  const passedAll = r.rows.filter((x) => x.sgpa !== null && x.failed === 0)
+  const ranked = [...passedAll].sort((a, b) => (b.sgpa ?? 0) - (a.sgpa ?? 0))
+  const rankOf = new Map<string, number>()
+  ranked.forEach((x, i) => rankOf.set(x.student.id, i > 0 && ranked[i - 1].sgpa === x.sgpa ? rankOf.get(ranked[i - 1].student.id)! : i + 1))
+  const perCourse = r.courses.map((course, i) => {
+    const cells = r.rows.map((x) => x.cells[i]).filter((c) => c.published && c.final !== undefined)
+    const finals = cells.map((c) => c.final!)
+    return { course, avg: finals.length ? finals.reduce((t, v) => t + v, 0) / finals.length : null, high: finals.length ? Math.max(...finals) : null, passPct: cells.length ? (cells.filter((c) => c.grade !== 'F' && c.grade !== 'AB').length / cells.length) * 100 : null, max: cells[0]?.max ?? 100 }
+  })
+  return {
+    grades, perCourse, rankOf, toppers: ranked.slice(0, 3),
+    passPct: withSgpa.length ? (passedAll.length / withSgpa.length) * 100 : null,
+    avgSgpa: withSgpa.length ? withSgpa.reduce((t, x) => t + (x.sgpa ?? 0), 0) / withSgpa.length : null,
+  }
 }
 
 /**

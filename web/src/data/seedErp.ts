@@ -77,12 +77,23 @@ export function createErpSeed(): ErpPart {
       { id: 'ex7', courseId: 'c9', title: 'End Semester Examination', date: iso(-6), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f4', kind: 'Regular' },
       { id: 'ex8', courseId: 'c4', title: 'End Semester Examination', date: iso(18), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f3', kind: 'Regular' },
       { id: 'ex9', courseId: 'c5', title: 'End Semester Examination', date: iso(20), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f1', kind: 'Regular' },
+      // BCA 2025 · Sem 3: papers written and evaluated; professors have submitted marks, waiting for the Registrar of Evaluation to publish.
+      { id: 'ex10', courseId: 'c6', title: 'Mid-Semester Examination', date: iso(-48), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f1', kind: 'Regular' },
+      { id: 'ex11', courseId: 'c7', title: 'Mid-Semester Examination', date: iso(-46), start: '10:00', end: '11:30', venue: 'Exam Block', maxMarks: 50, minAttendance: 0, requireFeesCleared: false, minInternal: 0, resultsPublished: true, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
+      { id: 'ex12', courseId: 'c6', title: 'End Semester Examination', date: iso(-12), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f1', kind: 'Regular' },
+      { id: 'ex13', courseId: 'c7', title: 'End Semester Examination', date: iso(-10), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
       { id: 'ex5', courseId: 'c3', title: 'End Semester Examination', date: iso(16), start: '09:30', end: '12:30', venue: 'Exam Block', maxMarks: 100, minAttendance: 75, requireFeesCleared: true, minInternal: 0, resultsPublished: false, grading: 'ABSOLUTE', evaluatorId: 'f2', kind: 'Regular' },
     ],
     results: [
       ...['s19', 's20', 's21', 's22'].flatMap((sid, i) => [
         { id: `r-ex6-${sid}`, examId: 'ex6', studentId: sid, marks: [78, 64, 35, 88][i] },
         { id: `r-ex7-${sid}`, examId: 'ex7', studentId: sid, marks: [82, 71, 58, 91][i] },
+      ]),
+      ...['s14', 's15', 's16', 's17', 's18'].flatMap((sid, i) => [
+        { id: `r-ex10-${sid}`, examId: 'ex10', studentId: sid, marks: [41, 36, 27, 45, 38][i] },
+        { id: `r-ex11-${sid}`, examId: 'ex11', studentId: sid, marks: [39, 33, 30, 44, 40][i] },
+        { id: `r-ex12-${sid}`, examId: 'ex12', studentId: sid, marks: [78, 66, 31, 88, 72][i] },
+        { id: `r-ex13-${sid}`, examId: 'ex13', studentId: sid, marks: [74, 61, 52, 91, 69][i] },
       ]),
       ...['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's13'].flatMap((sid, i) => [
       { id: `r-ex1-${sid}`, examId: 'ex1', studentId: sid, marks: 22 + ((i * 7) % 27) },
@@ -162,6 +173,8 @@ export function createErpSeed(): ErpPart {
       sheet('rs-c3', 'c3', 5, 'ex5', 'f2', [{ kind: 'assignment', id: 'as3' }]),
       sheet('rs-c4', 'c4', 5, 'ex8', 'f3', []),
       sheet('rs-c5', 'c5', 5, 'ex9', 'f1', []),
+      { ...sheet('rs-c6', 'c6', 3, 'ex12', 'f1', [{ kind: 'exam', id: 'ex10' }]), status: 'SUBMITTED', submittedAt: d(-2) },
+      { ...sheet('rs-c7', 'c7', 3, 'ex13', 'f2', [{ kind: 'exam', id: 'ex11' }]), status: 'SUBMITTED', submittedAt: d(-1) },
       sheet('rs-c8', 'c8', 5, 'ex6', 'f4', [], 'PUBLISHED', { s19: { internal: 48 }, s20: { internal: 42 }, s21: { internal: 24 }, s22: { internal: 54 } }),
       sheet('rs-c9', 'c9', 5, 'ex7', 'f4', [], 'PUBLISHED', { s19: { internal: 51 }, s20: { internal: 45 }, s21: { internal: 39 }, s22: { internal: 56 } }),
     ],

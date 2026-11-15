@@ -233,3 +233,27 @@ tbody tr:hover { background: var(--surface-2); }
 .class-tile-flag { font-size: 11px; font-weight: 600; color: var(--success); }
 .class-chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
 .class-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* Class result analysis */
+.grade-bar { display: grid; grid-template-columns: 32px 1fr 28px; align-items: center; gap: 8px; }
+.grade-bar-label { font-weight: 700; font-size: 13px; }
+.grade-bar-track { height: 10px; background: var(--surface-2, #eef0f3); border-radius: 99px; overflow: hidden; }
+.grade-bar-fill { display: block; height: 100%; background: var(--success); border-radius: 99px; }
+.grade-bar-fill.bad { background: var(--danger); }
+.rank-medal { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: var(--accent, #c9a227); color: #fff; flex-shrink: 0; }
+
+/* Print: only the page content, no navigation or buttons */
+.print-only { display: none; }
+@media print {
+  .sidebar, .topbar, .sidebar-overlay, .no-print, .page-search, .filter-bar, .tabs, .btn, .icon-btn, .chip { display: none !important; }
+  .print-only { display: block !important; }
+  .shell { display: block !important; }
+  .page-header, .alert, .class-grid { display: none !important; }
+  .card-head h2 { font-size: 16px; }
+  @page { margin: 12mm; }
+  body, .content { background: #fff !important; }
+  .content { padding: 0 !important; }
+  .card { box-shadow: none !important; break-inside: avoid; }
+  .table-wrap { overflow: visible !important; }
+}
+.print-head { margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 8px; }

@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowUpCircle, Download, GraduationCap, Pencil, Plus, Users } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowUpCircle, Download, GraduationCap, Pencil, Plus, Printer, Users } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import EditUser from '../components/EditUser'
 import { can } from '../access'
 import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
-import { classColor, classCourses, classLabel, classResults, classStudents, promoteClass, resyncRosters } from '../classes'
+import { classAnalysis, classColor, classCourses, classLabel, classResults, classStudents, promoteClass, resyncRosters } from '../classes'
 import { attendanceStats, matches, userName } from '../lib'
 import type { ClassGroup, Course, User } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
@@ -17,8 +17,18 @@ export default function Classes() {
   const db = useDB()
   const me = useCurrentUser()!
   const manage = can(me, 'manageClasses')
-  const [classId, setClassId] = useState(db.classes[0]?.id ?? '')
-  const [tab, setTab] = useState<'students' | 'courses' | 'results'>('students')
+  // Other pages can open a class's tab directly: /classes?class=<id>&tab=results
+  const [params] = useSearchParams()
+  const [classId, setClassId] = useState(db.classes.some((c) => c.id === params.get('class')) ? params.get('class')! : db.classes[0]?.id ?? '')
+  const [tab, setTab] = useState<'students' | 'courses' | 'results'>((['students', 'courses', 'results'] as const).find((t) => t === params.get('tab')) ?? 'students')
+  // Follow links that change the class/tab while this page is already open.
+  const qClass = params.get('class'), qTab = params.get('tab')
+  const [seen, setSeen] = useState(`${qClass}|${qTab}`)
+  if (seen !== `${qClass}|${qTab}`) {
+    setSeen(`${qClass}|${qTab}`)
+    if (qClass && db.classes.some((c) => c.id === qClass)) setClassId(qClass)
+    const t = (['students', 'courses', 'results'] as const).find((x) => x === qTab); if (t) setTab(t)
+  }
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
   const [newClass, setNewClass] = useState(false)
@@ -203,51 +213,86 @@ function ClassStudents({ cls, q, onEdit }: { cls: ClassGroup; q: string; onEdit:
 function ClassResultsView({ cls, q, onPromote }: { cls: ClassGroup; q: string; onPromote: () => void }) {
   const db = useDB()
   const me = useCurrentUser()!
-  const r = classResults(db, cls)
-  const canPromote = can(me, 'promoteStudents')
+  const [sem, setSem] = useState(cls.semester)
+  const semester = Math.min(sem, cls.semester)
+  const r = classResults(db, cls, semester)
+  const an = classAnalysis(r)
+  const current = semester === cls.semester
+  const canPromote = can(me, 'promoteStudents') && current
+  // Marks before publication are visible only to the Registrar of Evaluation.
+  const seesDrafts = can(me, 'manageResults')
+  const rank = (id: string) => an.rankOf.get(id) ?? 999
   const rows = r.rows.filter((x) => matches(q, x.student.name, x.student.rollNo) || matches(q, classLabel(cls)))
-  const passed = r.rows.filter((x) => x.failed === 0).length
+    .sort((a, b) => (r.ready ? rank(a.student.id) - rank(b.student.id) || (b.sgpa ?? 0) - (a.sgpa ?? 0) : 0) || (a.student.rollNo ?? '').localeCompare(b.student.rollNo ?? ''))
+  const anyPublished = r.sheets.some((e) => e.sheet?.status === 'PUBLISHED')
+  const pastSems = Array.from({ length: cls.semester }, (_, i) => i + 1).filter((s) => db.courses.some((c) => c.classId === cls.id && c.semester === s))
 
   const exportCsv = () => {
-    const lines = [['Roll no', 'Name', ...r.courses.map((c) => c.code), 'SGPA', 'Failed'], ...r.rows.map((x) => [x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.final !== undefined ? `${c.final} (${c.grade ?? '-'})` : '')), x.sgpa?.toFixed(2) ?? '', String(x.failed)])]
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); a.download = `${cls.id}-sem${cls.semester}-results.csv`; a.click()
+    const lines = [['Rank', 'Roll no', 'Name', ...r.courses.map((c) => c.code), 'SGPA', 'CGPA', 'Result'], ...r.rows.map((x) => [String(an.rankOf.get(x.student.id) ?? ''), x.student.rollNo ?? '', x.student.name, ...x.cells.map((c) => (c.published && c.final !== undefined ? `${c.final} (${c.grade ?? '-'})` : '')), x.sgpa?.toFixed(2) ?? '', fmtCgpa(cgpaOf(db, x.student)), x.failed ? `${x.failed} failed` : 'Pass'])]
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.map((l) => l.join(',')).join('\n')], { type: 'text/csv' })); a.download = `${cls.id}-sem${semester}-results.csv`; a.click()
   }
+  const maxGrade = Math.max(1, ...an.grades.map((g) => g.count))
 
   return (
     <>
+      <div className="row gap wrap no-print">
+        <span className="small muted">Semester</span>
+        {pastSems.map((s) => <button key={s} className={`chip ${s === semester ? 'active' : ''}`} onClick={() => setSem(s)}>Sem {s}{s === cls.semester ? ' (current)' : ''}</button>)}
+      </div>
       <div className="grid grid-4">
-        <Stat label="Courses this semester" value={r.courses.length} />
         <Stat label="Results published" value={`${r.sheets.filter((e) => e.sheet?.status === 'PUBLISHED').length}/${r.courses.length}`} tone={r.ready ? 'success' : 'warning'} />
-        <Stat label="Passed all courses" value={`${passed}/${r.rows.length}`} tone="success" />
-        <Stat label="With failures" value={r.rows.length - passed} tone="danger" />
+        <Stat label="Pass percentage" value={r.ready && an.passPct !== null ? `${Math.round(an.passPct)}%` : '—'} hint={r.ready ? `${r.rows.filter((x) => x.failed === 0 && x.sgpa !== null).length} of ${r.rows.length} passed every course` : 'After all results are published'} tone="success" />
+        <Stat label="Class average SGPA" value={an.avgSgpa !== null && anyPublished ? an.avgSgpa.toFixed(2) : '—'} tone="info" />
+        <Stat label="With backlogs" value={r.ready ? r.rows.filter((x) => x.failed > 0).length : '—'} tone="danger" />
       </div>
       {!r.ready && (
         <div className="alert alert-warning">
-          Promotion unlocks once every course's result sheet is published.
+          {current ? 'Promotion unlocks once every course\'s result sheet is published.' : 'Some results of this semester are not published.'}
           {r.missingExam.length > 0 && <> No result sheet yet for: <strong>&nbsp;{r.missingExam.join(', ')}</strong>.</>}
           {r.unpublished.length > 0 && <> Not yet published: <strong>&nbsp;{r.unpublished.join(', ')}</strong>.</>}
         </div>
       )}
-      <Card title={`Semester ${cls.semester} result sheet`} action={<div className="row gap">
+      <Card className="print-area" title={`${classLabel(cls).replace(/Sem \d+/, `Sem ${semester}`)}: class result`} action={<div className="row gap no-print">
+        <button className="btn btn-outline btn-sm" onClick={() => window.print()}><Printer size={14} /> Print</button>
         <button className="btn btn-outline btn-sm" onClick={exportCsv}><Download size={14} /> CSV</button>
         <Link to="/results" className="btn btn-outline btn-sm">Result sheets</Link>
-        <Link to="/exams" className="btn btn-outline btn-sm">Exams</Link>
         {canPromote && <button className="btn btn-sm" disabled={!r.ready} onClick={onPromote}>{cls.semester >= cls.maxSemesters ? <><GraduationCap size={14} /> Graduate</> : <><ArrowUpCircle size={14} /> Promote to Sem {cls.semester + 1}</>}</button>}
       </div>}>
-        {r.courses.length === 0 ? <Empty text="No courses this semester." /> : (
+        {r.courses.length === 0 ? <Empty text="No courses in this semester." /> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Student</th>{r.courses.map((c) => <th key={c.id} title={c.name}>{c.code}</th>)}<th>SGPA</th><th>Result</th></tr></thead>
+            <thead><tr><th>Rank</th><th>Student</th>{r.courses.map((c) => <th key={c.id} title={`${c.name} · ${c.credits} credits`}>{c.code}</th>)}<th>SGPA</th><th>CGPA</th><th>Result</th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.student.id}>
+                <td>{r.ready && an.rankOf.has(x.student.id) ? <strong>{an.rankOf.get(x.student.id)}</strong> : <span className="muted">—</span>}</td>
                 <td>{x.student.name}<div className="small muted">{x.student.rollNo}</div></td>
-                {x.cells.map((c) => <td key={c.course.id}>{c.final !== undefined ? <span title={`Internal ${c.internal} + External ${c.external}`}>{c.final}/{c.max} {c.published && c.grade && <Badge tone={c.grade === 'F' || c.grade === 'AB' ? 'danger' : 'success'}>{c.grade}</Badge>}</span> : <span className="muted">—</span>}</td>)}
+                {x.cells.map((c) => <td key={c.course.id}>{c.final !== undefined && (c.published || seesDrafts) ? <span title={`Internal ${c.internal} + External ${c.external}`}>{c.final}/{c.max} {c.published ? c.grade && <Badge tone={c.grade === 'F' || c.grade === 'AB' ? 'danger' : 'success'}>{c.grade}</Badge> : <Badge>Draft</Badge>}</span> : <span className="muted">—</span>}</td>)}
                 <td><strong>{x.sgpa?.toFixed(2) ?? '—'}</strong></td>
+                <td>{fmtCgpa(cgpaOf(db, x.student))}</td>
                 <td>{r.ready ? <Badge tone={x.failed ? 'danger' : 'success'}>{x.failed ? `${x.failed} backlog(s)` : 'Pass'}</Badge> : <Badge>Pending</Badge>}</td>
               </tr>
             ))}</tbody>
           </table></div>
         )}
       </Card>
+      {anyPublished && (
+        <div className="grid grid-3">
+          <Card title="Toppers">
+            {an.toppers.length === 0 ? <Empty text="Ranks appear when every result is published." /> : <div className="list">{an.toppers.map((x) => (
+              <div key={x.student.id} className="list-item"><span className="rank-medal">{an.rankOf.get(x.student.id)}</span><div className="grow"><strong>{x.student.name}</strong><div className="small muted">{x.student.rollNo}</div></div><strong>{x.sgpa?.toFixed(2)}</strong></div>
+            ))}</div>}
+          </Card>
+          <Card title="Grade distribution">
+            <div className="stack" style={{ gap: 6 }}>{an.grades.map((g) => (
+              <div key={g.grade} className="grade-bar"><span className="grade-bar-label">{g.grade}</span><span className="grade-bar-track"><span className={`grade-bar-fill ${g.grade === 'F' || g.grade === 'AB' ? 'bad' : ''}`} style={{ width: `${(g.count / maxGrade) * 100}%` }} /></span><span className="small">{g.count}</span></div>
+            ))}</div>
+          </Card>
+          <Card title="Course-wise analysis">
+            <div className="list">{an.perCourse.map((p) => (
+              <div key={p.course.id} className="list-item"><div className="grow"><strong>{p.course.code}</strong> <span className="small muted">{p.course.name}</span><div className="small muted">Average {p.avg === null ? '—' : `${p.avg.toFixed(1)}/${p.max}`} · Highest {p.high ?? '—'}</div></div>{p.passPct !== null ? <Badge tone={p.passPct === 100 ? 'success' : p.passPct >= 75 ? 'warning' : 'danger'}>{Math.round(p.passPct)}% pass</Badge> : <Badge>Not published</Badge>}</div>
+            ))}</div>
+          </Card>
+        </div>
+      )}
       {cls.promotedAt && <div className="small muted">Last promoted {new Date(cls.promotedAt).toLocaleString('en-IN')}.</div>}
     </>
   )

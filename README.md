@@ -143,6 +143,22 @@ sets up sheets directly. On the sheet:
 
 Logic lives in `web/src/results.ts`.
 
+### Publishing a class result, step by step
+
+1. **Registrar of Evaluation** (`exams@campus.edu` / `exams123`) → *Examinations*: create the exam for a class (papers, dates, internal/external split, pass rules) and allot evaluators.
+2. **Professor** (e.g. `faculty@campus.edu` / `faculty123`) → *Result Sheets*: open the course sheet, tick the internals that count, enter external marks, **Submit to Registrar of Evaluation**.
+3. **Registrar of Evaluation** → *Result Sheets* → pick the class: every course shows *Draft / Submitted / Published*. Open a sheet to review, *Return* it for corrections, or **Publish class results**.
+4. Students and parents are notified. Each student's **Grades & transcript** gets the semester (internal, external, final, grade, points, SGPA, CGPA) with a printable **grade card**; failed courses become backlogs.
+5. *Classes → Results & promotion* shows the **class result**: ranks, SGPA/CGPA, pass %, class average, toppers, grade distribution and course-wise analysis, with Print and CSV. Earlier semesters can be viewed too. When every course is published, **Promote** the class (detain if needed).
+
+Marks are visible only to the Registrar of Evaluation and the professor until published.
+
+In the demo: **BBA 2024** (Sem 5) is already published, **BCA 2025** (Sem 3) has marks submitted by professors and is waiting for you to publish, and **BCA 2024** (Sem 5) has its end-semester exams coming up.
+
+### Demo data
+
+The demo data is one connected record, not sample numbers per page: every class has its earlier semesters as real courses, exams, marks and published result sheets (`web/src/data/seedHistory.ts`), so CGPA, SGPA, transcripts and backlogs (including backlogs cleared in a supplementary exam) are all derived. Fees follow each student's semester, hostel room and bus route; attendance is marked by each course's teacher. Run `npm run check:data` to verify every reference resolves and the modules agree.
+
 ## Hostels
 
 Boys and girls hostels each have a block warden who manages only that hostel (rooms with

@@ -31,10 +31,15 @@ export function timeAgo(t: number) {
 
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export function coursesFor(db: DB, user: User) {
-  if (user.role === 'student') return db.courses.filter((c) => c.studentIds.includes(user.id))
-  if (user.role === 'faculty') return db.courses.filter((c) => c.facultyId === user.id)
-  return db.courses
+/** A course offering is current while its class is in that course's semester (earlier ones are history: see transcripts). */
+export const isCurrentCourse = (db: DB, c: DB['courses'][number]) => { const cls = db.classes.find((x) => x.id === c.classId); return !cls || cls.semester === c.semester }
+
+/** Courses a person takes or teaches this semester (pass all=true to include earlier semesters). */
+export function coursesFor(db: DB, user: User, all = false) {
+  const list = all ? db.courses : db.courses.filter((c) => isCurrentCourse(db, c))
+  if (user.role === 'student') return list.filter((c) => c.studentIds.includes(user.id))
+  if (user.role === 'faculty') return list.filter((c) => c.facultyId === user.id)
+  return list
 }
 
 export function attendanceStats(db: DB, studentId: string, courseId?: string) {

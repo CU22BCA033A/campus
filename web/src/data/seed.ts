@@ -2,6 +2,8 @@ import type { DB, User } from './types'
 import { createErpSeed, officeStaff, parentUser } from './seedErp'
 import { groupIntoSessions } from '../exams'
 import { normalizeBeds } from '../hostels'
+import { sheetRows } from '../results'
+import { addAcademicHistory } from './seedHistory'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -102,19 +104,21 @@ const FEMALE = new Set(['s2', 's4', 's6', 's8', 's10', 's12', 's14', 's17', 's19
 const HOSTELLERS = new Set(['s1', 's2', 's3', 's4', 's5', 's7', 's8', 's15', 's17'])
 const withResidence = (u: User): User => u.role !== 'student' ? u : {
   ...u, gender: FEMALE.has(u.id) ? 'Female' : 'Male', residence: HOSTELLERS.has(u.id) ? 'HOSTEL' : 'DAY_SCHOLAR',
-  backlogCourses: u.id === 's21' ? ['c8'] : [],
-  // Semesters completed before the portal; the portal's published results are added on top.
-  priorRecord: priorFor(u),
+  // Backlogs come from published result sheets (computed at the end of createSeed).
+  backlogCourses: [],
+  // Earlier semesters are real result sheets (seedHistory.ts). Only a lateral entry brings a prior record from another institution.
+  priorRecord: u.id === 's13' ? { semesters: 4, credits: 56, cgpa: 7.85, backlogs: 0 } : undefined,
+  cgpa: undefined, backlogs: undefined,
 }
-function priorFor(u: User): NonNullable<User['priorRecord']> {
-  const semesters = Math.max(0, (u.semester ?? 1) - 1)
-  const portalBacklogs = u.id === 's21' ? 1 : 0
-  return { semesters, credits: semesters * 20, cgpa: semesters ? u.cgpa ?? 0 : 0, backlogs: Math.max(0, (u.backlogs ?? 0) - portalBacklogs) }
-}
+
+/** Room fee for students who have a hostel room (matches seedErp rooms), and bus-route subscribers. */
+const HOSTEL_ROOM_FEE: Record<string, number> = { s1: 55000, s3: 55000, s5: 55000, s2: 55000, s4: 38000 }
+const TRANSPORT: Record<string, boolean> = { s6: true, s9: true, s14: true }
+const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3', c5: 'f1', c6: 'f1', c7: 'f2', c8: 'f4', c9: 'f4' }
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 9,
+    version: 10,
     examSessions: [],
     users: [...students, newStudent, ...bca2025, ...bba2024, ...faculty, admin, ...officeStaff, parentUser].map(withResidence),
     classes: [
@@ -218,7 +222,7 @@ export function createSeed(): DB {
         for (const [c, ids] of [['c1', bca2024Ids], ['c2', bca2024Ids], ['c3', bca2024Ids], ['c4', bca2024Ids], ['c5', bca2024Ids], ['c6', bca2025Ids], ['c7', bca2025Ids], ['c8', bba2024Ids], ['c9', bba2024Ids]] as const) {
           if ((back + c.charCodeAt(1)) % 3 === 0) continue
           const present = ids.filter((_sid, i) => (i * 7 + back * 3 + c.charCodeAt(1) * (i % 3 + 1)) % 5 !== 0)
-          recs.push({ id: `att${++n}`, courseId: c, date: iso(-back), present, markedBy: 'f1' })
+          recs.push({ id: `att${++n}`, courseId: c, date: iso(-back), present, markedBy: TEACHER[c] })
         }
       }
       return recs
@@ -246,12 +250,17 @@ export function createSeed(): DB {
       { id: 'cl4', category: 'Social Service', meeting: 'Saturdays 9 AM', active: true, joinOpen: true, name: 'NSS', description: 'Community service and social outreach.', members: [], facultyAdvisorId: 'f3' },
     ],
     fees: allStudentIds.flatMap((sid, i) => {
-      // Roughly half the class has already cleared this semester's fees.
+      // Roughly half of each class has already cleared this semester's fees.
       const cleared = i % 2 === 1
+      const sem = sid === 's13' || bca2024Ids.includes(sid) || bba2024Ids.includes(sid) ? 5 : 3
+      const tuition = bba2024Ids.includes(sid) ? 68000 : 75000
+      const room = HOSTEL_ROOM_FEE[sid]
       return [
-        { id: `fee-${sid}-1`, studentId: sid, title: 'Tuition fee – Semester 5', amount: 75000, dueAt: d(10), head: 'Tuition' as const, ...(cleared ? { paidAt: d(-4 - i), paidAmount: 75000, txnId: `TXN8421${i}`, gateway: 'Razorpay' } : {}) },
+        ...(room ? [{ id: `fee-${sid}-h`, studentId: sid, title: `Hostel fee – Semester ${sem}`, amount: room, dueAt: d(10), head: 'Hostel' as const, ...(cleared ? { paidAt: d(-5 - i), paidAmount: room, txnId: `TXN7300${i}`, gateway: 'Razorpay' } : {}) }] : []),
+        ...(TRANSPORT[sid] ? [{ id: `fee-${sid}-t`, studentId: sid, title: `Transport fee – Semester ${sem}`, amount: 18000, dueAt: d(10), head: 'Transport' as const, paidAt: d(-20), paidAmount: 18000, txnId: `TXN6100${i}`, gateway: 'UPI' }] : []),
+        { id: `fee-${sid}-1`, studentId: sid, title: `Tuition fee – Semester ${sem}`, amount: tuition, dueAt: d(10), head: 'Tuition' as const, ...(cleared ? { paidAt: d(-4 - i), paidAmount: 75000, txnId: `TXN8421${i}`, gateway: 'Razorpay' } : {}) },
         { id: `fee-${sid}-2`, studentId: sid, title: 'Examination fee', amount: 2500, dueAt: d(5), head: 'Exam' as const, ...(cleared ? { paidAt: d(-3 - i), paidAmount: 2500, txnId: `TXN9512${i}`, gateway: 'PayU' } : {}) },
-        { id: `fee-${sid}-3`, studentId: sid, title: 'Tuition fee – Semester 4', amount: 75000, dueAt: d(-170), paidAt: d(-172), paidAmount: 75000, txnId: `TXN${sid.toUpperCase()}4`, head: 'Tuition' as const },
+        { id: `fee-${sid}-3`, studentId: sid, title: `Tuition fee – Semester ${sem - 1}`, amount: tuition, dueAt: d(-170), paidAt: d(-172), paidAmount: 75000, txnId: `TXN${sid.toUpperCase()}4`, head: 'Tuition' as const },
       ]
     }),
     gatePasses: [
@@ -263,8 +272,8 @@ export function createSeed(): DB {
       { id: 'pl2', question: 'Should the canteen add a late-evening menu?', options: ['Yes', 'No', 'Only during exams'], votes: { s5: 0, s6: 2, f1: 0 }, createdBy: 'a2', closesAt: d(7) },
     ],
     routes: [
-      { id: 'r1', name: 'Route 1 – Hebbal', bus: 'KA-01-F-4521', driver: 'Ramesh K', driverPhone: '9845012345', subscribers: ['s1', 's4'], stops: [{ name: 'Hebbal Flyover', time: '07:15' }, { name: 'Yelahanka New Town', time: '07:35' }, { name: 'Airport Road Toll', time: '07:55' }, { name: 'Campus', time: '08:25' }] },
-      { id: 'r2', name: 'Route 2 – Majestic', bus: 'KA-01-F-7783', driver: 'Suresh M', driverPhone: '9845067890', subscribers: ['s2'], stops: [{ name: 'Majestic', time: '06:50' }, { name: 'Mekhri Circle', time: '07:15' }, { name: 'Jakkur', time: '07:40' }, { name: 'Campus', time: '08:20' }] },
+      { id: 'r1', name: 'Route 1 – Hebbal', bus: 'KA-01-F-4521', driver: 'Ramesh K', driverPhone: '9845012345', subscribers: ['s6', 's14'], stops: [{ name: 'Hebbal Flyover', time: '07:15' }, { name: 'Yelahanka New Town', time: '07:35' }, { name: 'Airport Road Toll', time: '07:55' }, { name: 'Campus', time: '08:25' }] },
+      { id: 'r2', name: 'Route 2 – Majestic', bus: 'KA-01-F-7783', driver: 'Suresh M', driverPhone: '9845067890', subscribers: ['s9'], stops: [{ name: 'Majestic', time: '06:50' }, { name: 'Mekhri Circle', time: '07:15' }, { name: 'Jakkur', time: '07:40' }, { name: 'Campus', time: '08:20' }] },
       { id: 'r3', name: 'Route 3 – Whitefield', bus: 'KA-53-F-1209', driver: 'Manjunath R', driverPhone: '9845011122', subscribers: [], stops: [{ name: 'ITPL', time: '06:40' }, { name: 'KR Puram', time: '07:05' }, { name: 'Hennur', time: '07:35' }, { name: 'Campus', time: '08:25' }] },
     ],
     feedback: [],
@@ -277,7 +286,24 @@ export function createSeed(): DB {
       { id: 'nt3', userId: 's1', text: 'Your gate pass was approved', link: '/gate-pass', createdAt: d(-4, 12), read: true },
     ],
   }
+  addAcademicHistory(seed, now)
+  // This semester's papers are named with the month of their class's first paper, like the earlier ones.
+  const classOfExam = (e: DB['exams'][number]) => seed.courses.find((c) => c.id === e.courseId)?.classId
+  const plain = seed.exams.filter((e) => !e.sessionId && /^(End Semester|Mid-Semester) Examination$/.test(e.title))
+  const first = new Map<string, string>()
+  for (const e of plain) { const k = `${classOfExam(e)}|${e.title}`; if (!first.has(k) || e.date < first.get(k)!) first.set(k, e.date) }
+  for (const e of plain) e.title = `${e.title} – ${new Date(first.get(`${classOfExam(e)}|${e.title}`)!).toLocaleString('en-IN', { month: 'short', year: 'numeric' })}`
   groupIntoSessions(seed)
+  // Backlogs: replay every published sheet in publishing order (a fail adds the course, a later pass clears it).
+  for (const sh of [...seed.resultSheets].filter((x) => x.status === 'PUBLISHED').sort((a, b) => (a.publishedAt ?? 0) - (b.publishedAt ?? 0))) {
+    for (const r of sheetRows(seed, sh)) {
+      if (r.pass === undefined) continue
+      const u = seed.users.find((x) => x.id === r.student.id)!
+      const list = new Set(u.backlogCourses ?? [])
+      if (r.pass) list.delete(sh.courseId); else list.add(sh.courseId)
+      u.backlogCourses = [...list]
+    }
+  }
   normalizeBeds(seed)
   return seed
 }
