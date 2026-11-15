@@ -6,9 +6,10 @@ import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from
 import EditUser from '../components/EditUser'
 import { can } from '../access'
 import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
-import { classCourses, classLabel, classResults, classStudents, promoteClass, resyncRosters } from '../classes'
+import { classColor, classCourses, classLabel, classResults, classStudents, promoteClass, resyncRosters } from '../classes'
 import { attendanceStats, matches, userName } from '../lib'
 import type { ClassGroup, Course, User } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const PROGRAMS = ['BCA', 'BBA', 'B.Sc Data Science', 'B.Com']
 
@@ -28,7 +29,14 @@ export default function Classes() {
   const faculty = db.users.filter((u) => u.role === 'faculty' && u.status === 'ACTIVE')
 
   const cls = db.classes.find((c) => c.id === classId)
-  const visibleClasses = db.classes.filter((c) => matches(q, classLabel(c), userName(db, c.mentorId ?? ''), ...classStudents(db, c.id).map((s) => `${s.name} ${s.rollNo}`)))
+  const cf = useFilters(['programme', 'batch', 'semester', 'mentor'] as const)
+  const classDefs = [
+    { key: 'programme' as const, label: 'Programmes', options: opts(db.classes.map((c) => c.program)) },
+    { key: 'batch' as const, label: 'Batches', options: opts(db.classes.map((c) => c.batch), (v) => `Batch ${v}`) },
+    { key: 'semester' as const, label: 'Semesters', options: opts(db.classes.map((c) => c.semester), (v) => `Semester ${v}`) },
+    { key: 'mentor' as const, label: 'Mentors', options: opts(db.classes.map((c) => c.mentorId), (v) => userName(db, v)) },
+  ]
+  const visibleClasses = db.classes.filter((c) => cf.ok('programme', c.program) && cf.ok('batch', c.batch) && cf.ok('semester', c.semester) && cf.ok('mentor', c.mentorId)).filter((c) => matches(q, classLabel(c), userName(db, c.mentorId ?? ''), ...classStudents(db, c.id).map((s) => `${s.name} ${s.rollNo}`)))
 
   const createClass = () => {
     const id = `cls-${cDraft.program.toLowerCase().replace(/[^a-z]/g, '')}-${cDraft.batch}-${cDraft.section.toLowerCase()}`
@@ -58,16 +66,17 @@ export default function Classes() {
         search={{ value: q, onChange: setQ, placeholder: 'Search class, student or roll no.' }}
         actions={manage && <button className="btn" onClick={() => setNewClass(true)}><Plus size={14} /> New class</button>} />
 
-      <div className="grid grid-4">
+      <FilterBar defs={classDefs} f={cf} count={visibleClasses.length} noun="class" />
+      <div className="class-grid">
         {visibleClasses.map((c) => {
           const n = classStudents(db, c.id).filter((s) => s.status === 'ACTIVE').length
           const r = classResults(db, c)
           return (
-            <button key={c.id} className="card" style={{ textAlign: 'left', borderColor: c.id === classId ? 'var(--brand)' : undefined, boxShadow: c.id === classId ? '0 0 0 2px var(--brand-light)' : undefined }} onClick={() => setClassId(c.id)}>
-              <div className="row between"><strong>{c.program} {c.batch}</strong><Badge tone="brand">Sem {c.semester}</Badge></div>
-              <div className="small muted">Section {c.section} · {n} students · {classCourses(db, c).length} courses</div>
-              <div className="small muted">Mentor: {c.mentorId ? userName(db, c.mentorId) : '—'}</div>
-              {r.ready && <Badge tone="success">Results published, ready to promote</Badge>}
+            <button key={c.id} className={`class-tile ${c.id === classId ? 'active' : ''}`} style={{ '--tile': classColor(c).fg, '--tile-bg': classColor(c).bg } as React.CSSProperties} onClick={() => setClassId(c.id)} aria-pressed={c.id === classId}>
+              <span className="class-tile-title"><span>{c.program} {c.batch} · {c.section}</span><span className="class-tile-sem">Sem {c.semester}</span></span>
+              <span className="class-tile-meta">{n} students · {classCourses(db, c).length} courses</span>
+              <span className="class-tile-meta">Mentor: {c.mentorId ? userName(db, c.mentorId) : '—'}</span>
+              {r.ready && !c.promotedAt && <span className="class-tile-flag">✓ Results published · ready to promote</span>}
             </button>
           )
         })}

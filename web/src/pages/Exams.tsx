@@ -11,6 +11,7 @@ import { can, officeUsers } from '../access'
 import { availableComponents, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet, passRules } from '../results'
 import { Link } from 'react-router-dom'
 import type { DB, Exam, ExamKind } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
 const ROOM_SEATS = 6 // small for the demo so several rooms are used
@@ -186,7 +187,14 @@ function ExamAdmin() {
     const ids = e.kind === 'Supplementary' && sh ? sh.extraStudentIds : db.courses.find((c) => c.id === e.courseId)!.studentIds
     return ids.filter((sid) => db.users.find((u) => u.id === sid)?.status === 'ACTIVE')
   }
-  const sessions = db.examSessions
+  const ef = useFilters(['cls', 'kind', 'status'] as const)
+  const edefs = [
+    { key: 'cls' as const, label: 'Classes', options: opts(db.examSessions.map((s) => s.classId ?? 'none'), (v) => (v === 'none' ? 'Backlog students (any class)' : classLabel(db.classes.find((c) => c.id === v)))) },
+    { key: 'kind' as const, label: 'Exam types', options: opts(db.examSessions.map((s) => s.kind)) },
+    { key: 'status' as const, label: 'Statuses', options: [{ value: 'upcoming', label: 'Upcoming' }, { value: 'running', label: 'In progress' }, { value: 'done', label: 'Results published' }] },
+  ]
+  const sStatus = (sid: string) => { const v = ef.values.status; if (!v) return true; const all = sessionPapers(db, sid); const today = new Date().toISOString().slice(0, 10); const pub = all.length > 0 && all.every((e) => e.resultsPublished); if (v === 'done') return pub; if (pub) return false; const started = all.some((e) => e.date <= today); return v === 'running' ? started : !started }
+  const sessions = db.examSessions.filter((s) => ef.ok('cls', s.classId ?? 'none') && ef.ok('kind', s.kind) && sStatus(s.id))
     .map((s) => ({ s, papers: sessionPapers(db, s.id).filter(mine) }))
     .filter((x) => x.papers.length || (isAdmin && sessionPapers(db, x.s.id).length === 0))
     .filter((x) => matches(term, x.s.title, x.s.kind, classLabel(db.classes.find((c) => c.id === x.s.classId)), ...x.papers.map((p) => `${courseName(db, p.courseId)} ${db.courses.find((c) => c.id === p.courseId)?.code} ${userName(db, p.evaluatorId ?? '')}`)))
@@ -355,7 +363,8 @@ function ExamAdmin() {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'exams', label: 'Exams', count: sessions.length }, { id: 'reval', label: 'Re-evaluation', count: db.revaluations.filter((r) => r.status === 'REQUESTED').length }]} />
       {tab === 'exams' && (
         <div className="stack">
-          {sessions.length === 0 && <Card><Empty text="No exams yet." /></Card>}
+          <FilterBar defs={edefs} f={ef} count={sessions.length} noun="exam" />
+          {sessions.length === 0 && <Card><Empty text="No exams match." /></Card>}
           {sessions.map(({ s, papers }) => {
             const all = sessionPapers(db, s.id)
             const dates = sessionDates(db, s.id)

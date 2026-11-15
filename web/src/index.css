@@ -196,7 +196,8 @@ tbody tr:hover { background: var(--surface-2); }
   .login-art { display: none; }
 }
 @media (max-width: 560px) {
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .grid > * { min-width: 0; }
   .hide-sm { display: none !important; }
 }
 
@@ -214,3 +215,21 @@ tbody tr:hover { background: var(--surface-2); }
 .sheet-input { width: 64px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); text-align: right; }
 .sheet-input.overridden { border-color: var(--accent); background: var(--accent-light); }
 .sheet-input:disabled { background: transparent; border-color: transparent; color: var(--text); }
+
+/* Filter bars on list pages */
+.filter-bar { margin-bottom: 12px; }
+.filter-select { width: auto; max-width: 220px; padding: 6px 10px; font-size: 13px; }
+.filter-select.filter-on { border-color: var(--brand); background: var(--brand-light); color: var(--brand); font-weight: 600; }
+@media (max-width: 560px) { .filter-select { max-width: 100%; flex: 1 1 140px; } }
+
+/* Compact, colour-coded class tiles and chips */
+.class-grid { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.class-tile { text-align: left; border: 1px solid var(--border); border-left: 4px solid var(--tile); background: var(--tile-bg); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; font: inherit; color: var(--text); cursor: pointer; transition: box-shadow .15s, transform .15s; }
+.class-tile:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.class-tile.active { outline: 2px solid var(--tile); outline-offset: 1px; box-shadow: var(--shadow); }
+.class-tile-title { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-weight: 700; font-size: 14px; color: var(--tile); }
+.class-tile-sem { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--tile); color: #fff; white-space: nowrap; }
+.class-tile-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.class-tile-flag { font-size: 11px; font-weight: 600; color: var(--success); }
+.class-chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+.class-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }

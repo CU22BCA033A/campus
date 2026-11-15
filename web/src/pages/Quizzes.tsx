@@ -4,13 +4,20 @@ import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader } from '../components/ui'
 import { courseName, coursesFor, fmtDateTime, userName, matches } from '../lib'
 import type { Quiz, QuizQuestion } from '../data/types'
+import { FilterBar, useFilters } from '../components/Filters'
 
 export default function Quizzes() {
   const db = useDB()
   const user = useCurrentUser()!
   const courses = coursesFor(db, user)
   const [term, setTerm] = useState('')
-  const quizzes = db.quizzes.filter((q) => courses.some((c) => c.id === q.courseId) && matches(term, q.title, courseName(db, q.courseId)))
+  const qf = useFilters(['course', 'status'] as const)
+  const qdefs = [
+    { key: 'course' as const, label: 'Courses', options: courses.map((c) => ({ value: c.id, label: `${c.code} · ${c.name}` })) },
+    { key: 'status' as const, label: 'Statuses', options: [{ value: 'open', label: 'Open' }, { value: 'upcoming', label: 'Upcoming' }, { value: 'closed', label: 'Closed' }, ...(user.role === 'student' ? [{ value: 'done', label: 'Attempted' }, { value: 'todo', label: 'Not attempted' }] : [])] },
+  ]
+  const qStatus = (q: Quiz) => { const v = qf.values.status, now = Date.now(); if (!v) return true; if (v === 'open') return q.opensAt < now && q.closesAt > now; if (v === 'upcoming') return q.opensAt >= now; if (v === 'closed') return q.closesAt <= now; const done = db.attempts.some((a) => a.quizId === q.id && a.studentId === user.id); return v === 'done' ? done : !done }
+  const quizzes = db.quizzes.filter((q) => qf.ok('course', q.courseId) && qStatus(q)).filter((q) => courses.some((c) => c.id === q.courseId) && matches(term, q.title, courseName(db, q.courseId)))
   const [taking, setTaking] = useState<Quiz | null>(null)
   const [creating, setCreating] = useState(false)
   const [results, setResults] = useState<Quiz | null>(null)
@@ -20,6 +27,7 @@ export default function Quizzes() {
   return (
     <>
       <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search quizzes or courses…' }} title="Quizzes & Tests" subtitle="Timed online assessments" actions={user.role === 'faculty' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> New quiz</button>} />
+      <FilterBar defs={qdefs} f={qf} count={quizzes.length} noun="quiz" />
       {quizzes.length === 0 && <Card><Empty icon={<FileQuestion />} text="No quizzes yet." /></Card>}
       <div className="grid grid-2">
         {quizzes.map((q) => {

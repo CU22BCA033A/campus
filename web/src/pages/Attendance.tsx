@@ -5,6 +5,8 @@ import { classLabel } from '../classes'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, PageHeader, Progress, Tabs } from '../components/ui'
 import { attendanceStats, coursesFor, fmtDate, matches, userName } from '../lib'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 
 export default function Attendance() {
   const user = useCurrentUser()!
@@ -30,8 +32,11 @@ function AttendanceReport() {
   const [onlyShort, setOnlyShort] = useState(true)
   const [threshold, setThreshold] = useState(75)
   const [term, setTerm] = useState('')
-  const students = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
-  const rows = students.map((s) => ({ s, overall: attendanceStats(db, s.id), per: db.courses.filter((c) => c.studentIds.includes(s.id)).map((c) => ({ c, a: attendanceStats(db, s.id, c.id) })) }))
+  const allStudents = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE')
+  const sf = useFilters([...STUDENT_KEYS, 'course'] as const)
+  const sdefs = [...studentDefs(db, allStudents), { key: 'course' as const, label: 'Courses', options: opts(db.courses.filter((c) => { const cl = db.classes.find((x) => x.id === c.classId); return cl && cl.semester === c.semester }).map((c) => c.id), (v) => { const c = db.courses.find((x) => x.id === v)!; return `${c.code} · ${c.name}` }) }]
+  const students = allStudents.filter((s) => studentOk(sf, s) && (!sf.values.course || db.courses.find((c) => c.id === sf.values.course)?.studentIds.includes(s.id)))
+  const rows = students.map((s) => ({ s, overall: attendanceStats(db, s.id), per: db.courses.filter((c) => c.studentIds.includes(s.id) && (!sf.values.course || c.id === sf.values.course)).map((c) => ({ c, a: attendanceStats(db, s.id, c.id) })) }))
     .filter((r) => matches(term, r.s.name, r.s.rollNo, r.s.program, r.s.batch)).filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
   const me = useCurrentUser()!
   const canNotify = can(me, 'manageAttendance')
@@ -60,6 +65,7 @@ function AttendanceReport() {
       </>} />
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
+          <FilterBar defs={sdefs} f={sf} />
           <label className="row gap"><input type="checkbox" checked={onlyShort} onChange={(e) => setOnlyShort(e.target.checked)} /> Only students with a shortage</label>
           <label className="row gap">Threshold <input className="input" style={{ width: 80 }} type="number" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />%</label>
           <span className="muted small">{rows.length} student(s)</span>

@@ -8,6 +8,7 @@ import { resyncRosters } from '../classes'
 import { fmtDate, inr, timeAgo, matches } from '../lib'
 import { officeUsers } from '../access'
 import type { Application, AppStage, DB } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 export const PROGRAMS: Record<string, { fee: number; code: string }> = {
   BCA: { fee: 75000, code: 'BCA' },
@@ -122,7 +123,14 @@ export default function Admissions() {
     setImporting(false); setCsv('')
   }
 
-  const list = db.applications.filter((a) => a.stage === stage && matches(term, a.name, a.email, a.phone, a.program, a.rollNo, a.category)).sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.createdAt - a.createdAt)
+  const af = useFilters(['programme', 'category', 'gender', 'residence'] as const)
+  const adefs = [
+    { key: 'programme' as const, label: 'Programmes', options: opts(db.applications.map((a) => a.program)) },
+    { key: 'category' as const, label: 'Categories', options: opts(db.applications.map((a) => a.category)) },
+    { key: 'gender' as const, label: 'Genders', options: opts(db.applications.map((a) => a.gender)) },
+    { key: 'residence' as const, label: 'Accommodation', options: opts(db.applications.map((a) => a.residence), (v) => (v === 'HOSTEL' ? 'Hostel' : 'Day scholar')) },
+  ]
+  const list = db.applications.filter((a) => af.ok('programme', a.program) && af.ok('category', a.category) && af.ok('gender', a.gender) && af.ok('residence', a.residence)).filter((a) => a.stage === stage && matches(term, a.name, a.email, a.phone, a.program, a.rollNo, a.category)).sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.createdAt - a.createdAt)
   const count = (s: AppStage) => db.applications.filter((a) => a.stage === s).length
   const current = open && db.applications.find((a) => a.id === open.id)
 
@@ -139,6 +147,7 @@ export default function Admissions() {
         <Stat label="Admitted" value={count('ADMITTED')} tone="success" icon={<GraduationCap size={22} />} />
       </div>
       <Tabs value={stage} onChange={setStage} tabs={STAGES.map((s) => ({ id: s.id, label: s.label, count: count(s.id) }))} />
+      <FilterBar defs={adefs} f={af} count={list.length} noun="application" />
       {stage === 'VERIFIED' && count('VERIFIED') > 0 && (
         <div className="alert alert-info row between wrap gap"><span>Compute the merit score (40% qualifying exam + 60% entrance) and rank all verified applicants.</span><button className="btn btn-sm" onClick={shortlistAll}>Generate merit list</button></div>
       )}

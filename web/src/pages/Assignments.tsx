@@ -5,6 +5,8 @@ import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Tabs } from '../c
 import { courseName, coursesFor, fmtDateTime, matches, timeAgo, userName } from '../lib'
 import { acceptAttr, answerOf, autoMark, FILE_KINDS, fileAllowed, formatsLabel, isAnswered, isAuto, PART_LABEL, partsOf, pendingManual, totalOf } from '../assignments'
 import type { Assignment, AssignmentPart, FileKind, PartAnswer, PartType, Submission } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { classLabel } from '../classes'
 
 const MAX_INLINE_BYTES = 2 * 1024 * 1024 // files up to 2 MB are kept so the teacher can open them in the demo
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -80,7 +82,15 @@ function StudentAssignments() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const all = db.assignments.filter((a) => courses.some((c) => c.id === a.courseId) && matches(q, a.title, a.description, courseName(db, a.courseId))).sort((a, b) => a.dueAt - b.dueAt)
+  const sf = useFilters(['course', 'due', 'format'] as const)
+  const sdefs = [
+    { key: 'course' as const, label: 'Courses', options: courses.map((c) => ({ value: c.id, label: `${c.code} · ${c.name}` })) },
+    { key: 'due' as const, label: 'Due dates', options: [{ value: 'week', label: 'Due this week' }, { value: 'later', label: 'Due later' }, { value: 'overdue', label: 'Past due' }] },
+    { key: 'format' as const, label: 'Formats', options: [{ value: 'file', label: 'Has file upload' }, { value: 'mcq', label: 'Has MCQ' }, { value: 'link', label: 'Has link' }, { value: 'text', label: 'Has written answer' }] },
+  ]
+  const dueOk = (a: Assignment) => { const v = sf.values.due, now = Date.now(); return !v || (v === 'overdue' ? a.dueAt < now : v === 'week' ? a.dueAt >= now && a.dueAt < now + 7 * 86_400_000 : a.dueAt >= now + 7 * 86_400_000) }
+  const formatOk = (a: Assignment) => { const v = sf.values.format; return !v || partsOf(a).some((p) => (v === 'mcq' ? isAuto(p) : p.type === v)) }
+  const all = db.assignments.filter((a) => sf.ok('course', a.courseId) && dueOk(a) && formatOk(a)).filter((a) => courses.some((c) => c.id === a.courseId) && matches(q, a.title, a.description, courseName(db, a.courseId))).sort((a, b) => a.dueAt - b.dueAt)
   const subOf = (a: Assignment) => db.submissions.find((s) => s.assignmentId === a.id && s.studentId === user.id)
   const lists = {
     pending: all.filter((a) => !subOf(a)),
@@ -136,6 +146,7 @@ function StudentAssignments() {
     <>
       <PageHeader title="Assignments" subtitle="Answer in the format each assignment asks for: written, link, file upload or MCQ" search={{ value: q, onChange: setQ, placeholder: 'Search assignments or courses…' }} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'pending', label: 'Pending', count: lists.pending.length }, { id: 'submitted', label: 'Submitted', count: lists.submitted.length }, { id: 'graded', label: 'Marked', count: lists.graded.length }]} />
+      <FilterBar defs={sdefs} f={sf} />
       <div className="stack">
         {lists[tab].length === 0 && <Card><Empty icon={<ClipboardList />} text="Nothing here." /></Card>}
         {lists[tab].map((a) => {
@@ -241,7 +252,14 @@ function FacultyAssignments() {
   const [feedback, setFeedback] = useState('')
   const [err, setErr] = useState('')
 
-  const list = db.assignments.filter((a) => courses.some((c) => c.id === a.courseId) && (courseF === 'all' || a.courseId === courseF) && matches(q, a.title, a.description, courseName(db, a.courseId), ...db.submissions.filter((s) => s.assignmentId === a.id).map((s) => userName(db, s.studentId)))).sort((a, b) => b.dueAt - a.dueAt)
+  const ff = useFilters(['cls', 'status', 'format'] as const)
+  const fdefs = [
+    { key: 'cls' as const, label: 'Classes', options: opts(courses.map((c) => c.classId), (v) => classLabel(db.classes.find((x) => x.id === v))) },
+    { key: 'status' as const, label: 'Statuses', options: [{ value: 'tomark', label: 'Has work to mark' }, { value: 'open', label: 'Open (before due date)' }, { value: 'closed', label: 'Past due date' }] },
+    { key: 'format' as const, label: 'Formats', options: [{ value: 'file', label: 'Has file upload' }, { value: 'mcq', label: 'Has MCQ' }, { value: 'link', label: 'Has link' }, { value: 'text', label: 'Has written answer' }] },
+  ]
+  const statusOk = (a: Assignment) => { const v = ff.values.status; if (!v) return true; if (v === 'open') return a.dueAt >= Date.now(); if (v === 'closed') return a.dueAt < Date.now(); return db.submissions.some((s) => s.assignmentId === a.id && s.marks === undefined) }
+  const list = db.assignments.filter((a) => ff.ok('cls', db.courses.find((c) => c.id === a.courseId)?.classId) && statusOk(a) && (!ff.values.format || partsOf(a).some((p) => (ff.values.format === 'mcq' ? isAuto(p) : p.type === ff.values.format)))).filter((a) => courses.some((c) => c.id === a.courseId) && (courseF === 'all' || a.courseId === courseF) && matches(q, a.title, a.description, courseName(db, a.courseId), ...db.submissions.filter((s) => s.assignmentId === a.id).map((s) => userName(db, s.studentId)))).sort((a, b) => b.dueAt - a.dueAt)
 
   const rowsFor = (a: Assignment, src = db) => {
     const course = src.courses.find((c) => c.id === a.courseId)!
@@ -339,6 +357,7 @@ function FacultyAssignments() {
           <select className="select" style={{ width: 'auto' }} value={courseF} onChange={(e) => setCourseF(e.target.value)} aria-label="Filter by course"><option value="all">All my courses</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select>
           <button className="btn" onClick={startCreate}><Plus size={14} /> New assignment</button>
         </>} />
+      <FilterBar defs={fdefs} f={ff} count={list.length} noun="assignment" />
       {list.length === 0 && <Card><Empty icon={<ClipboardList />} text="No assignments." /></Card>}
       <div className="stack">
         {list.map((a) => {

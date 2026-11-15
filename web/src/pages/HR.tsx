@@ -5,6 +5,8 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../com
 import { computePayslip, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
 import type { Payslip, StaffLeave } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { officeLabel } from '../facets'
 
 const QUOTA: Record<StaffLeave['type'], number> = { Casual: 12, Sick: 10, Earned: 15, Duty: 30, 'Loss of Pay': 365 }
 const days = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1)
@@ -27,6 +29,15 @@ export default function HR() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
 
   const mine = db.leaves.filter((l) => l.staffId === user.id)
+  const hf = useFilters(['type', 'status', 'department', 'office'] as const)
+  const staffOf = (id: string) => db.users.find((u) => u.id === id)
+  const hdefs = [
+    { key: 'type' as const, label: 'Leave types', options: opts(db.leaves.map((l) => l.type)), hidden: tab !== 'approvals' },
+    { key: 'status' as const, label: 'Statuses', options: opts(db.leaves.map((l) => l.status), (v) => v[0] + v.slice(1).toLowerCase()), hidden: tab !== 'approvals' },
+    { key: 'department' as const, label: 'Departments', options: opts(db.users.filter((u) => u.basicSalary).map((u) => u.department)) },
+    { key: 'office' as const, label: 'Offices', options: opts(db.users.filter((u) => u.basicSalary).map(officeLabel)) },
+  ]
+  const staffOk = (id: string) => { const u = staffOf(id); return !!u && hf.ok('department', u.department) && hf.ok('office', officeLabel(u)) }
   const used = (t: StaffLeave['type']) => mine.filter((l) => l.type === t && l.status === 'APPROVED').reduce((s, l) => s + l.days, 0)
   const staff = db.users.filter((u) => (u.role === 'faculty' || u.role === 'admin') && u.basicSalary)
 
@@ -85,10 +96,11 @@ export default function HR() {
           )}
         </Card>
       )}
+      {(tab === 'approvals' || tab === 'payroll') && <FilterBar defs={hdefs} f={hf} />}
       {tab === 'approvals' && canApprove && (
         <Card>
           <table><thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th /></tr></thead><tbody>
-            {db.leaves.filter((l) => matches(term, userName(db, l.staffId), l.type, l.reason, l.status)).sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING')).map((l) => (
+            {db.leaves.filter((l) => staffOk(l.staffId) && hf.ok('type', l.type) && hf.ok('status', l.status) && matches(term, userName(db, l.staffId), l.type, l.reason, l.status)).sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING')).map((l) => (
               <tr key={l.id}><td>{userName(db, l.staffId)}</td><td>{l.type}</td><td>{fmtDate(l.from)} – {fmtDate(l.to)}</td><td>{l.days}</td><td>{l.reason}</td>
                 <td><Badge tone={l.status === 'APPROVED' ? 'success' : l.status === 'PENDING' ? 'warning' : 'danger'}>{l.status}</Badge></td>
                 <td>{l.status === 'PENDING' && l.staffId !== user.id && <div className="row gap"><button className="btn btn-success btn-sm" onClick={() => review(l, 'APPROVED')}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => review(l, 'REJECTED')}>Decline</button></div>}</td></tr>
@@ -110,7 +122,7 @@ export default function HR() {
             <Card key={r.id} title={`Payroll · ${r.month}`} action={<button className="btn btn-outline btn-sm" onClick={() => exportBank(r.month)}><Download size={14} /> Bank file (CSV)</button>}>
               <div className="table-wrap"><table>
                 <thead><tr><th>Employee</th><th>Gross</th><th>LOP</th><th>PF</th><th>ESI</th><th>PT</th><th>TDS</th><th>Net pay</th><th /></tr></thead>
-                <tbody>{r.payslips.filter((p) => matches(term, userName(db, p.staffId))).map((p) => <tr key={p.staffId}><td>{userName(db, p.staffId)}</td><td>{inr(p.gross)}</td><td>{p.lopDays ? `${p.lopDays}d · ${inr(p.lopDeduction)}` : '—'}</td><td>{inr(p.pf)}</td><td>{inr(p.esi)}</td><td>{inr(p.professionalTax)}</td><td>{inr(p.tds)}</td><td><strong>{inr(p.net)}</strong></td><td><button className="btn btn-ghost btn-sm" onClick={() => setSlip({ p, month: r.month })}>Payslip</button></td></tr>)}</tbody>
+                <tbody>{r.payslips.filter((p) => staffOk(p.staffId) && matches(term, userName(db, p.staffId))).map((p) => <tr key={p.staffId}><td>{userName(db, p.staffId)}</td><td>{inr(p.gross)}</td><td>{p.lopDays ? `${p.lopDays}d · ${inr(p.lopDeduction)}` : '—'}</td><td>{inr(p.pf)}</td><td>{inr(p.esi)}</td><td>{inr(p.professionalTax)}</td><td>{inr(p.tds)}</td><td><strong>{inr(p.net)}</strong></td><td><button className="btn btn-ghost btn-sm" onClick={() => setSlip({ p, month: r.month })}>Payslip</button></td></tr>)}</tbody>
               </table></div>
             </Card>
           ))}

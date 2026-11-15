@@ -8,6 +8,9 @@ import { classCourses, classLabel, classStudents } from '../classes'
 import { fmtDate, fmtDateTime, matches, userName } from '../lib'
 import { availableComponents, compKey, componentInfo, DEFAULT_EXTERNAL, DEFAULT_INTERNAL, newSheet, publishSheet, sheetFor, sheetProgress, sheetRows } from '../results'
 import type { ResultSheet } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
+import ClassChip from '../components/ClassChip'
 
 const statusTone = (s: ResultSheet['status']) => (s === 'PUBLISHED' ? 'success' : s === 'SUBMITTED' ? 'info' : 'warning')
 const statusLabel = (s: ResultSheet['status']) => (s === 'PUBLISHED' ? 'Published' : s === 'SUBMITTED' ? 'Submitted to Evaluation' : 'Draft (with professor)')
@@ -48,7 +51,13 @@ export default function Results() {
     audit(me.id, 'RESULTS_PUBLISH_CLASS', classLabel(cls))
   }
 
-  const supplementary = db.resultSheets.filter((s) => s.term === 'Supplementary' && (office || mineSheet(s)))
+  const supAll = db.resultSheets.filter((s) => s.term === 'Supplementary' && (office || mineSheet(s)))
+  const rf = useFilters(['cls', 'status'] as const)
+  const rdefs = [
+    { key: 'cls' as const, label: 'Classes (of the course)', options: opts(supAll.map((s) => db.courses.find((c) => c.id === s.courseId)?.classId), (v) => classLabel(db.classes.find((c) => c.id === v))) },
+    { key: 'status' as const, label: 'Statuses', options: opts(supAll.map((s) => s.status), (v) => statusLabel(v as ResultSheet['status'])) },
+  ]
+  const supplementary = supAll.filter((s) => rf.ok('cls', db.courses.find((c) => c.id === s.courseId)?.classId) && rf.ok('status', s.status))
 
   return (
     <>
@@ -87,7 +96,7 @@ export default function Results() {
 
       {tab === 'class' && office && (
         <>
-          <div className="row gap wrap">{classes.map((c) => <button key={c.id} className={`chip ${c.id === classId ? 'active' : ''}`} onClick={() => setClassId(c.id)}>{classLabel(c)}</button>)}</div>
+          <div className="row gap wrap">{classes.map((c) => <ClassChip key={c.id} cls={c} active={c.id === classId} onClick={() => setClassId(c.id)} />)}</div>
           {!cls ? <Card><Empty text="No classes to show." /></Card> : (() => {
             const courses = classCourses(db, cls).filter((c) => office || c.facultyId === me.id || db.resultSheets.some((s) => s.courseId === c.id && s.evaluatorId === me.id))
             const sheets = courses.map((c) => ({ c, sh: sheetFor(db, c.id, cls.semester) }))
@@ -128,6 +137,7 @@ export default function Results() {
         </>
       )}
 
+      {tab === 'supplementary' && <FilterBar defs={rdefs} f={rf} count={supplementary.length} noun="sheet" />}
       {tab === 'supplementary' && (
         <Card title="Supplementary / backlog exam sheets">
           {supplementary.length === 0 ? <Empty text="No supplementary sheets. Register a backlog student to create one." /> : (
@@ -166,7 +176,9 @@ function BacklogRegistration({ q, onOpen }: { q: string; onOpen: (id: string) =>
   const me = useCurrentUser()!
   const [local, setLocal] = useState('')
   const term = q || local
-  const students = db.users.filter((u) => u.role === 'student' && (u.backlogCourses?.length || (term && matches(term, u.name, u.rollNo))))
+  const bf = useFilters(STUDENT_KEYS)
+  const withBacklogs = db.users.filter((u) => u.role === 'student' && u.backlogCourses?.length)
+  const students = db.users.filter((u) => u.role === 'student' && studentOk(bf, u) && (u.backlogCourses?.length || (term && matches(term, u.name, u.rollNo))))
     .filter((u) => matches(term, u.name, u.rollNo, ...(u.backlogCourses ?? []).map((c) => db.courses.find((x) => x.id === c)?.code)))
 
   /** Register a student for the next attempt of a course: an open supplementary sheet, created with its exam if needed. */
@@ -202,6 +214,7 @@ function BacklogRegistration({ q, onOpen }: { q: string; onOpen: (id: string) =>
 
   return (
     <Card title="Re-register students for backlog courses" action={!q && <SearchBox value={local} onChange={setLocal} placeholder="Find any student…" />}>
+      <FilterBar defs={studentDefs(db, withBacklogs)} f={bf} count={students.length} noun="student" />
       <p className="small muted" style={{ marginBottom: 10 }}>Students with failed courses are listed. Registering adds them to that course's supplementary sheet and exam. The course then appears in their results as a backlog attempt, even though it belongs to an earlier semester. Passing it clears the backlog.</p>
       {students.length === 0 ? <Empty text="No students with backlogs match." /> : (
         <div className="table-wrap"><table>

@@ -79,3 +79,15 @@ export function promoteClass(d: DB, classId: string, detainedIds: string[], acto
   resyncRosters(d)
   d.audit.unshift({ id: `au${Date.now().toString(36)}`, at: Date.now(), actorId, action: graduating ? 'CLASS_GRADUATED' : 'CLASS_PROMOTED', detail: `${cls.program} ${cls.batch} Sec ${cls.section}: ${graduating ? 'graduated' : `Sem ${cls.semester - 1} → Sem ${cls.semester}`}, ${detainedIds.length} detained` })
 }
+
+/** Distinct colour per class (stable: derived from the class id), used on tiles and chips. */
+const CLASS_COLORS = [
+  { fg: '#7a1e2c', bg: '#f8eaec' }, { fg: '#1d5fa8', bg: '#e8f0fb' }, { fg: '#1f7a46', bg: '#e6f4ec' }, { fg: '#9a5b00', bg: '#fcf1de' },
+  { fg: '#6b3fa0', bg: '#f1eaf9' }, { fg: '#0f766e', bg: '#e3f4f2' }, { fg: '#b42369', bg: '#fbe8f1' }, { fg: '#4b5563', bg: '#eef0f3' },
+]
+export function classColor(c?: { id: string }) {
+  if (!c) return CLASS_COLORS[7]
+  let h = 0
+  for (const ch of c.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return CLASS_COLORS[h % (CLASS_COLORS.length - 1)]
+}

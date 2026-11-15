@@ -4,6 +4,8 @@ import { audit, switchUser, uid, update, useCurrentUser, useDB } from '../data/s
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
 import { attendanceStats, feeOutstanding, inr, matches } from '../lib'
 import { classLabel, resyncRosters } from '../classes'
+import { FilterBar, opts, useFilters } from '../components/Filters'
+import { officeLabel, staffDefs, studentDefs, studentOk } from '../facets'
 import EditUser, { canEditProfile } from '../components/EditUser'
 import type { Office, Role, User } from '../data/types'
 import { can, OFFICES, persona, personaLabel } from '../access'
@@ -15,8 +17,7 @@ export function AdminUsers() {
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [role, setRole] = useState<'all' | Role>('all')
-  const [classF, setClassF] = useState('all')
-  const [resF, setResF] = useState<'all' | 'HOSTEL' | 'DAY_SCHOLAR'>('all')
+  const f = useFilters(['programme', 'batch', 'cls', 'semester', 'residence', 'gender', 'department', 'office', 'status'] as const)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
   const [draft, setDraft] = useState({ name: '', email: '', role: (can(me, 'editStudentProfiles') ? 'student' : 'faculty') as Role, office: 'registrar' as Office, department: 'Computer Applications', rollNo: '', classId: db.classes[0]?.id ?? '' })
@@ -24,8 +25,20 @@ export function AdminUsers() {
   const visibleRole = (r: Role) => (r === 'student' ? can(me, 'editStudentProfiles') : r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
   const canCreate = (r: Role) => (r === 'student' || r === 'parent' ? can(me, 'manageStudents') : can(me, 'manageStaff'))
   const roles = (['student', 'parent', 'faculty', 'admin'] as Role[]).filter(visibleRole)
-  const users = db.users
-    .filter((u) => visibleRole(u.role) && (role === 'all' || u.role === role) && (classF === 'all' || u.classId === classF) && (resF === 'all' || u.residence === resF))
+  const pool = db.users.filter((u) => visibleRole(u.role) && (role === 'all' || u.role === role))
+  const poolStudents = pool.filter((u) => u.role === 'student'), poolStaff = pool.filter((u) => u.role === 'faculty' || u.role === 'admin')
+  const defs = [
+    ...studentDefs(db, poolStudents),
+    { key: 'residence' as const, label: 'Accommodation', options: opts(poolStudents.map((u) => u.residence), (v) => (v === 'HOSTEL' ? 'Hostel' : 'Day scholar')) },
+    { key: 'gender' as const, label: 'Genders', options: opts(poolStudents.map((u) => u.gender)) },
+    ...staffDefs(poolStaff),
+    { key: 'status' as const, label: 'Statuses', options: opts(pool.map((u) => u.status), (v) => v[0] + v.slice(1).toLowerCase()) },
+  ]
+  // Student facets only narrow students and staff facets only narrow staff, so mixed lists stay sensible.
+  const users = pool
+    .filter((u) => (u.role !== 'student' || (studentOk(f, u) && f.ok('residence', u.residence) && f.ok('gender', u.gender))) && ((u.role !== 'faculty' && u.role !== 'admin') || (f.ok('department', u.department) && f.ok('office', officeLabel(u)))) && f.ok('status', u.status))
+    .filter((u) => !(f.values.programme || f.values.batch || f.values.cls || f.values.semester || f.values.residence || f.values.gender) || u.role === 'student')
+    .filter((u) => !(f.values.department || f.values.office) || u.role === 'faculty' || u.role === 'admin')
     .filter((u) => matches(q, u.name, u.email, u.rollNo, u.phone, u.department, classLabel(db.classes.find((c) => c.id === u.classId))))
   const statusAllowed = (u: User) => canCreate(u.role) && u.id !== me.id
 
@@ -49,15 +62,8 @@ export function AdminUsers() {
       <Card>
         <div className="row gap wrap" style={{ marginBottom: 12 }}>
           {(['all', ...roles] as const).map((r) => <button key={r} className={`chip ${role === r ? 'active' : ''}`} onClick={() => setRole(r)} style={{ textTransform: 'capitalize' }}>{r === 'admin' ? 'office staff' : r}</button>)}
-          {roles.includes('student') && (
-            <select className="select" style={{ width: 'auto' }} value={classF} onChange={(e) => setClassF(e.target.value)} aria-label="Filter by class">
-              <option value="all">All classes</option>
-              {db.classes.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
-            </select>
-          )}
-          {roles.includes('student') && <select className="select" style={{ width: 'auto' }} value={resF} onChange={(e) => setResF(e.target.value as typeof resF)} aria-label="Accommodation"><option value="all">Hostel &amp; day scholars</option><option value="HOSTEL">Hostel</option><option value="DAY_SCHOLAR">Day scholars</option></select>}
-          <span className="small muted">{users.length} result(s)</span>
         </div>
+        <FilterBar defs={defs} f={f} count={users.length} noun="user" />
         <div className="table-wrap">
           <table>
             <thead><tr><th>User</th><th>Role</th><th>ID / class</th><th>Status</th><th>Actions</th></tr></thead>

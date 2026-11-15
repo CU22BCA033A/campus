@@ -6,6 +6,7 @@ import { can } from '../access'
 import { classCourses, classLabel, classStudents } from '../classes'
 import { coursesFor, DAYS, matches, userName } from '../lib'
 import type { DB, TimetableSlot } from '../data/types'
+import ClassChip from '../components/ClassChip'
 
 const WEEK = [1, 2, 3, 4, 5, 6]
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
@@ -160,7 +161,7 @@ function TimetableManager({ manage }: { manage: boolean }) {
           {manage && <button className="btn btn-outline" onClick={() => setCopyFrom(true)} disabled={!courses.length}><Copy size={14} /> Copy pattern</button>}
           {manage && <button className="btn" disabled={!courses.length} onClick={() => openNew()}><Plus size={14} /> Add period</button>}
         </>} />
-      <div className="row gap wrap">{db.classes.map((c) => <button key={c.id} className={`chip ${c.id === classId ? 'active' : ''}`} onClick={() => setClassId(c.id)}>{classLabel(c)}</button>)}</div>
+      <div className="row gap wrap">{db.classes.map((c) => <ClassChip key={c.id} cls={c} active={c.id === classId} onClick={() => setClassId(c.id)} />)}</div>
       {cls && (
         <>
           <div className="row gap wrap small">

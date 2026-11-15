@@ -5,6 +5,7 @@ import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../com
 import { approvalChain, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers, persona } from '../access'
 import type { Asset, Office, PRStatus, PurchaseRequest, User } from '../data/types'
+import { FilterBar, opts, useFilters } from '../components/Filters'
 
 const CATS: PurchaseRequest['category'][] = ['IT Equipment', 'Furniture', 'Lab Equipment', 'Stationery', 'Sports']
 const HOD_OF: Record<string, string> = { 'Computer Applications': 'f2', Mathematics: 'f3' }
@@ -35,7 +36,15 @@ export default function Procurement() {
   const [allotTo, setAllotTo] = useState('')
   const [term, setTerm] = useState('')
 
-  const prs = db.purchaseRequests.filter((p) => matches(term, p.title, p.vendor, p.department, p.category, p.poNumber, userName(db, p.requestedBy))).filter((p) => seesAll || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
+  const pf = useFilters(['status', 'category', 'department', 'astatus', 'location'] as const)
+  const pdefs = [
+    { key: 'status' as const, label: 'Statuses', options: opts(db.purchaseRequests.map((p) => p.status), (v) => v.replace(/_/g, ' ').toLowerCase()), hidden: tab !== 'requests' },
+    { key: 'category' as const, label: 'Categories', options: opts([...db.purchaseRequests.map((p) => p.category), ...db.assets.map((a) => a.category)]) },
+    { key: 'department' as const, label: 'Departments', options: opts(db.purchaseRequests.map((p) => p.department)), hidden: tab !== 'requests' },
+    { key: 'astatus' as const, label: 'Asset statuses', options: opts(db.assets.map((a) => a.status), (v) => v.replace('_', ' ').toLowerCase()), hidden: tab !== 'assets' },
+    { key: 'location' as const, label: 'Locations', options: opts(db.assets.map((a) => a.location)), hidden: tab !== 'assets' },
+  ]
+  const prs = db.purchaseRequests.filter((p) => pf.ok('status', p.status) && pf.ok('category', p.category) && pf.ok('department', p.department)).filter((p) => matches(term, p.title, p.vendor, p.department, p.category, p.poNumber, userName(db, p.requestedBy))).filter((p) => seesAll || p.requestedBy === user.id || HOD_OF[p.department] === user.id).sort((a, b) => b.createdAt - a.createdAt)
 
   const create = () => {
     if (!draft.title || draft.unitCost <= 0) return
@@ -82,7 +91,7 @@ export default function Procurement() {
   }
 
   const now = Date.now()
-  const assets = db.assets.filter((a) => matches(term, a.tag, a.name, a.category, a.location, a.assignedTo ? userName(db, a.assignedTo) : '')).filter((a) => assetFilter === 'all' || (assetFilter === 'expired' ? a.warrantyUntil < now : a.warrantyUntil >= now && a.warrantyUntil < now + 90 * 86_400_000)).sort((a, b) => a.warrantyUntil - b.warrantyUntil)
+  const assets = db.assets.filter((a) => pf.ok('category', a.category) && pf.ok('astatus', a.status) && pf.ok('location', a.location)).filter((a) => matches(term, a.tag, a.name, a.category, a.location, a.assignedTo ? userName(db, a.assignedTo) : '')).filter((a) => assetFilter === 'all' || (assetFilter === 'expired' ? a.warrantyUntil < now : a.warrantyUntil >= now && a.warrantyUntil < now + 90 * 86_400_000)).sort((a, b) => a.warrantyUntil - b.warrantyUntil)
   const spend = db.purchaseRequests.filter((p) => ['PO_ISSUED', 'RECEIVED'].includes(p.status)).reduce((s, p) => s + total(p), 0)
 
   return (
@@ -95,6 +104,7 @@ export default function Procurement() {
         <Stat label="Warranty expiring ≤ 90 days" value={db.assets.filter((a) => a.warrantyUntil >= now && a.warrantyUntil < now + 90 * 86_400_000).length} tone="danger" />
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'requests', label: 'Purchase requests', count: prs.length }, { id: 'assets', label: 'Asset register', count: db.assets.length }]} />
+      <FilterBar defs={pdefs} f={pf} count={tab === 'requests' ? prs.length : assets.length} noun={tab === 'requests' ? 'request' : 'asset'} />
       {tab === 'requests' && (
         <div className="stack">
           {prs.length === 0 && <Card><Empty text="No purchase requests." /></Card>}
