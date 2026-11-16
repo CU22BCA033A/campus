@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { AlertTriangle, Copy, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, Pencil, Plus, Trash2 } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader } from '../components/ui'
 import { can } from '../access'
 import { classCourses, classLabel, classStudents } from '../classes'
-import { coursesFor, DAYS, matches, userName } from '../lib'
-import type { DB, TimetableSlot } from '../data/types'
+import { coursesFor, DAYS, isCurrentCourse, matches, userName } from '../lib'
+import type { ClassGroup, DB, TimetableSlot } from '../data/types'
 import ClassChip from '../components/ClassChip'
+import { isPan } from '../registration'
 
 const WEEK = [1, 2, 3, 4, 5, 6]
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
@@ -21,10 +22,12 @@ export function slotConflicts(db: DB, draft: Omit<TimetableSlot, 'id'> & { id?: 
     const other = db.courses.find((c) => c.id === s.courseId)
     if (!other) continue
     const otherCls = db.classes.find((c) => c.id === other.classId)
-    // Only clash with slots that are live (the course's class is currently in that semester).
-    if (otherCls && other.semester !== otherCls.semester) continue
+    // Only clash with slots that are live (current semester / current term).
+    if (!isCurrentCourse(db, other)) continue
     const when = `${DAYS[s.day]} ${s.start}–${s.end}`
     if (course?.classId && other.classId === course.classId) out.push(`Class already has ${other.code} on ${when}`)
+    // Foundation / open-elective periods: students taking both courses would clash.
+    else if (course && (isPan(course) || isPan(other))) { const both = course.studentIds.filter((id) => other.studentIds.includes(id)).length; if (both) out.push(`${both} student(s) also take ${other.code} on ${when}`) }
     if (course && other.facultyId === course.facultyId) out.push(`${userName(db, course.facultyId)} teaches ${other.code} (${classLabel(otherCls)}) on ${when}`)
     if (s.room.trim().toLowerCase() === draft.room.trim().toLowerCase()) out.push(`Room ${s.room} is used by ${other.code} on ${when}`)
   }
@@ -107,8 +110,12 @@ function TimetableManager({ manage }: { manage: boolean }) {
   const [q, setQ] = useState('')
   const [draft, setDraft] = useState<(Omit<TimetableSlot, 'id'> & { id?: string }) | null>(null)
   const [copyFrom, setCopyFrom] = useState(false)
-  const cls = db.classes.find((c) => c.id === classId)
-  const courses = cls ? classCourses(db, cls) : []
+  const [view, setView] = useState<'grid' | 'list'>('grid')
+  // 'pan' = this term's foundation / open-elective courses (students from several classes).
+  const isPanView = classId === 'pan'
+  const cls = isPanView ? ({ id: 'pan', program: 'University courses', batch: 0, section: '', semester: 0, maxSemesters: 0 } as ClassGroup) : db.classes.find((c) => c.id === classId)
+  const courses = isPanView ? db.courses.filter((c) => isPan(c) && c.term === db.registration.currentTerm) : cls ? classCourses(db, cls) : []
+  const label = (c?: ClassGroup) => (c?.id === 'pan' ? `Foundation & open electives (${db.registration.currentTerm})` : classLabel(c))
   const slots = db.timetable.filter((s) => courses.some((c) => c.id === s.courseId))
   const shown = slots.filter((s) => { const c = db.courses.find((x) => x.id === s.courseId)!; return matches(q, c.code, c.name, s.room, userName(db, c.facultyId), DAYS[s.day]) })
   const hours = slots.reduce((t, s) => t + (toMin(s.end) - toMin(s.start)) / 60, 0)
@@ -123,15 +130,16 @@ function TimetableManager({ manage }: { manage: boolean }) {
     const isNew = !draft.id
     update((d) => { if (draft.id) Object.assign(d.timetable.find((x) => x.id === draft.id)!, draft); else d.timetable.push({ ...draft, id: uid('t') }) })
     const c = db.courses.find((x) => x.id === draft.courseId)!
-    notify([c.facultyId, ...classStudents(db, cls.id).map((s) => s.id)], `Timetable ${isNew ? 'updated' : 'changed'}: ${c.code} on ${DAYS[draft.day]} ${draft.start}–${draft.end}, ${draft.room}`, '/timetable')
-    audit(user.id, isNew ? 'TIMETABLE_ADD' : 'TIMETABLE_EDIT', `${classLabel(cls)}: ${c.code} ${DAYS[draft.day]} ${draft.start}–${draft.end} ${draft.room}`)
+    notify([c.facultyId, ...(isPanView ? c.studentIds : classStudents(db, cls.id).map((s) => s.id))], `Timetable ${isNew ? 'updated' : 'changed'}: ${c.code} on ${DAYS[draft.day]} ${draft.start}–${draft.end}, ${draft.room}`, '/timetable')
+    audit(user.id, isNew ? 'TIMETABLE_ADD' : 'TIMETABLE_EDIT', `${label(cls)}: ${c.code} ${DAYS[draft.day]} ${draft.start}–${draft.end} ${draft.room}`)
     setDraft(null)
   }
   const remove = () => {
     if (!draft?.id || !cls) return
     const c = db.courses.find((x) => x.id === draft.courseId)!
     update((d) => { d.timetable = d.timetable.filter((x) => x.id !== draft.id) })
-    audit(user.id, 'TIMETABLE_DELETE', `${classLabel(cls)}: ${c.code} ${DAYS[draft.day]} ${draft.start}`)
+    notify([c.facultyId, ...(isPanView ? c.studentIds : classStudents(db, cls.id).map((s) => s.id))], `Timetable: ${c.code} on ${DAYS[draft.day]} ${draft.start} was removed`, '/timetable')
+    audit(user.id, 'TIMETABLE_DELETE', `${label(cls)}: ${c.code} ${DAYS[draft.day]} ${draft.start}`)
     setDraft(null)
   }
   /** Copy the weekly pattern of another class onto this one, matching courses by position. */
@@ -158,10 +166,16 @@ function TimetableManager({ manage }: { manage: boolean }) {
         search={{ value: q, onChange: setQ, placeholder: 'Search course, teacher, room or day…' }}
         actions={<>
           <button className="btn btn-outline" disabled={!slots.length} onClick={() => exportIcs(db, slots)}>Export .ics</button>
-          {manage && <button className="btn btn-outline" onClick={() => setCopyFrom(true)} disabled={!courses.length}><Copy size={14} /> Copy pattern</button>}
+          {manage && !isPanView && <button className="btn btn-outline" onClick={() => setCopyFrom(true)} disabled={!courses.length}><Copy size={14} /> Copy pattern</button>}
           {manage && <button className="btn" disabled={!courses.length} onClick={() => openNew()}><Plus size={14} /> Add period</button>}
         </>} />
-      <div className="row gap wrap">{db.classes.map((c) => <ClassChip key={c.id} cls={c} active={c.id === classId} onClick={() => setClassId(c.id)} />)}</div>
+      <div className="row gap wrap">
+        {db.classes.map((c) => <ClassChip key={c.id} cls={c} active={c.id === classId} onClick={() => setClassId(c.id)} />)}
+        <button className={`chip ${isPanView ? 'active' : ''}`} onClick={() => setClassId('pan')}>University courses</button>
+        <span className="grow" />
+        <button className={`chip ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>Week grid</button>
+        <button className={`chip ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>List</button>
+      </div>
       {cls && (
         <>
           <div className="row gap wrap small">
@@ -169,12 +183,27 @@ function TimetableManager({ manage }: { manage: boolean }) {
             {courses.map((c) => { const n = slots.filter((s) => s.courseId === c.id).length; return <Badge key={c.id} tone={n ? 'neutral' : 'warning'}>{c.code}: {n}</Badge> })}
           </div>
           {existingClashes.length > 0 && <div className="alert alert-warning"><AlertTriangle size={16} /> <span>{existingClashes.slice(0, 4).join(' · ')}{existingClashes.length > 4 ? ` · +${existingClashes.length - 4} more` : ''}</span></div>}
-          {courses.length === 0 ? <Card><Empty text="This class has no courses this semester. Create them under Classes & Promotion." /></Card> : <Grid slots={shown} showTeacher onSlot={manage ? (s) => setDraft({ ...s }) : undefined} onEmpty={manage ? (d, t) => openNew(d, t) : undefined} />}
+          {courses.length === 0 ? <Card><Empty text={isPanView ? 'No foundation or open-elective courses this term.' : 'This class has no courses this semester. Create them under Classes & Promotion.'} /></Card> : view === 'list' ? (
+            <Card title={`${label(cls)}: periods`} action={manage && <button className="btn btn-sm" onClick={() => openNew()}><Plus size={12} /> Add period</button>}>
+              {shown.length === 0 ? <Empty text="No periods yet." /> : (
+                <div className="table-wrap"><table>
+                  <thead><tr><th>Day</th><th>Time</th><th>Course</th><th>Teacher</th><th>Room</th><th>Clashes</th>{manage && <th />}</tr></thead>
+                  <tbody>{[...shown].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map((t) => { const c = db.courses.find((x) => x.id === t.courseId)!; const cl = slotConflicts(db, t); return (
+                    <tr key={t.id}>
+                      <td>{DAYS[t.day]}</td><td>{t.start}–{t.end}</td><td><strong>{c.code}</strong> {c.name}</td><td className="small">{userName(db, c.facultyId)}</td><td>{t.room}</td>
+                      <td>{cl.length ? <Badge tone="danger">{cl.join('; ')}</Badge> : <Badge tone="success">None</Badge>}</td>
+                      {manage && <td className="row gap"><button className="icon-btn" aria-label={`Edit ${c.code} ${DAYS[t.day]} ${t.start}`} onClick={() => setDraft({ ...t })}><Pencil size={14} /></button><button className="icon-btn" aria-label="Duplicate period" title="Duplicate" onClick={() => setDraft({ courseId: t.courseId, day: t.day, start: t.start, end: t.end, room: t.room })}><Copy size={14} /></button><button className="icon-btn" aria-label={`Delete ${c.code} ${DAYS[t.day]} ${t.start}`} onClick={() => { if (!confirm(`Delete ${c.code} on ${DAYS[t.day]} ${t.start}?`)) return; update((d) => { d.timetable = d.timetable.filter((x) => x.id !== t.id) }); audit(user.id, 'TIMETABLE_DELETE', `${c.code} ${DAYS[t.day]} ${t.start}`) }}><Trash2 size={14} /></button></td>}
+                    </tr>
+                  ) })}</tbody>
+                </table></div>
+              )}
+            </Card>
+          ) : <Grid slots={shown} showTeacher onSlot={manage ? (s) => setDraft({ ...s }) : undefined} onEmpty={manage ? (d, t) => openNew(d, t) : undefined} />}
           {manage && slots.length > 0 && <div className="small muted">Click a period to edit or delete it. Click an empty cell to add a period there.</div>}
         </>
       )}
       {draft && cls && (
-        <Modal title={draft.id ? 'Edit period' : `Add period · ${classLabel(cls)}`} onClose={() => setDraft(null)} footer={<>
+        <Modal title={draft.id ? 'Edit period' : `Add period · ${label(cls)}`} onClose={() => setDraft(null)} footer={<>
           {draft.id && <button className="btn btn-ghost" onClick={remove}><Trash2 size={14} /> Delete</button>}
           <div className="grow" />
           <button className="btn btn-ghost" onClick={() => setDraft(null)}>Cancel</button>

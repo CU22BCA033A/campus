@@ -312,3 +312,11 @@ tbody tr:hover { background: var(--surface-2); }
 .reg-timer { position: sticky; top: 64px; z-index: 25; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; background: var(--info-bg, #e8f0fb); color: var(--info); border: 1px solid currentColor; }
 .reg-timer .timer { font-size: 20px; font-variant-numeric: tabular-nums; }
 .reg-timer.urgent { background: var(--danger-bg, #fde8e8); color: var(--danger); }
+.sem-list { display: flex; flex-direction: column; gap: 8px; }
+.sem-item { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.sem-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--surface); border: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.sem-head:hover { background: var(--surface-2, #f3f4f6); }
+.sem-chevron { transition: transform .15s; }
+.sem-item.open .sem-chevron { transform: rotate(90deg); }
+.sem-item.open .sem-head { border-bottom: 1px solid var(--border); }
+.sem-item .table-wrap { padding: 0 12px 10px; }

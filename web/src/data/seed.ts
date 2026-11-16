@@ -118,7 +118,7 @@ const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3'
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 13,
+    version: 14,
     registrations: [],
     registration: { currentTerm: '', registrationTerm: '', open: false, minFoundation: 1, minOpenElective: 1 },
     examSessions: [],
@@ -208,7 +208,7 @@ export function createSeed(): DB {
       { id: 't11', courseId: 'c5', day: 5, start: '09:00', end: '10:00', room: 'LH-202' },
       { id: 't12', courseId: 'c1', day: 5, start: '10:15', end: '11:15', room: 'LH-201' },
       { id: 't13', courseId: 'c3', day: 6, start: '09:00', end: '10:00', room: 'LH-202' },
-      { id: 't14', courseId: 'c6', day: 1, start: '09:00', end: '10:00', room: 'LH-301' },
+      { id: 't14', courseId: 'c6', day: 1, start: '14:00', end: '15:00', room: 'LH-301' },
       { id: 't15', courseId: 'c7', day: 2, start: '10:15', end: '11:15', room: 'LH-301' },
       { id: 't16', courseId: 'c6', day: 4, start: '11:30', end: '12:30', room: 'Lab-1' },
       { id: 't17', courseId: 'c8', day: 1, start: '10:15', end: '11:15', room: 'MB-101' },

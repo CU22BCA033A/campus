@@ -110,3 +110,12 @@ export function semesterOf(db: DB, sheet: ResultSheet, studentId: string) {
 
 /** "Sem 5", "Foundation · Odd 2026-27" … */
 export const courseWhen = (c: Course) => (isPan(c) ? `${KIND_LABEL[kindOf(c)]} · ${c.term ?? ''}` : `Semester ${c.semester}`)
+
+/** Everything a student registered for, semester by semester (class courses by roster, baskets by registration). */
+export function semesterCourses(db: DB, studentId: string) {
+  const bySem = new Map<number, Course[]>()
+  const add = (sem: number, c: Course) => { const l = bySem.get(sem) ?? []; if (!l.some((x) => x.id === c.id)) bySem.set(sem, [...l, c]) }
+  for (const c of db.courses) if (!isPan(c) && c.studentIds.includes(studentId)) add(c.semester, c)
+  for (const r of db.registrations) if (r.studentId === studentId && r.status === 'REGISTERED') { const c = db.courses.find((x) => x.id === r.courseId); if (c) add(r.semester, c) }
+  return bySem
+}

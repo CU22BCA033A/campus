@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, Clock, Download, Lock, Pencil, Plus, Send, Trash2, Unlock, Users } from 'lucide-react'
+import { ChevronRight, ClipboardCheck, Clock, Download, Lock, Pencil, Plus, Send, Trash2, Unlock, Users } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { FilterBar, opts, useFilters } from '../components/Filters'
@@ -8,8 +8,9 @@ import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 import { can } from '../access'
 import { classColor, classLabel, resyncRosters } from '../classes'
 import { fmtDate, matches, userName } from '../lib'
-import { dropCourse, eligibleCourses, isPan, KIND_LABEL, kindOf, registerCourse, registrationStatus, seatsLeft, sessionState, timeLimitMin } from '../registration'
+import { dropCourse, eligibleCourses, isPan, KIND_LABEL, kindOf, registerCourse, registrationStatus, seatsLeft, semesterCourses, sessionState, timeLimitMin } from '../registration'
 import type { Course, CourseKind, DB, User } from '../data/types'
+import { studentResults } from '../results'
 
 export default function Registration() {
   const user = useCurrentUser()!
@@ -525,10 +526,10 @@ function StudentRegistration() {
   return (
     <>
       <PageHeader title="Course Registration" subtitle={`Choose your courses for ${settings.registrationTerm}`} />
-      <div className={`alert ${closed ? 'alert-warning' : 'alert-success'}`}>
+      <div className={`alert ${closed ? 'alert-warning' : 'alert-success'}`}><span>
         Registration for <strong>{settings.registrationTerm}</strong> is <strong>{closed ? 'closed' : 'open'}</strong>{settings.closesAt ? ` · last date ${fmtDate(settings.closesAt)}` : ''}.
         {closed ? ' Contact the Registrar of Evaluation for changes.' : ` For your class: ${plural(st.limits.FOUNDATION, 'foundation course')} and ${plural(st.limits.OPEN_ELECTIVE, 'open elective')}${settings.minCredits ? `, at least ${settings.minCredits} credits in total` : ''}${settings.maxCredits ? ` (at most ${settings.maxCredits})` : ''}. Seats are first come, first served.`}
-      </div>
+      </span></div>
       {ss.state === 'active' && (
         <div className={`reg-timer ${ss.left < 120_000 ? 'urgent' : ''}`} role="timer" aria-label="Time left">
           <Clock size={18} /><strong className="timer">{mm}:{sec}</strong><span className="small">left to finish registration</span>
@@ -539,7 +540,8 @@ function StudentRegistration() {
       )}
       {ss.state === 'none' && !closed && <div className="alert alert-info">Look through the courses first. You will have <strong>&nbsp;{minutes} minutes&nbsp;</strong> once you click <strong>&nbsp;Register&nbsp;</strong> on a course.</div>}
       {locked && <div className="alert alert-info">{ss.state === 'submitted' ? `Registration submitted on ${fmtDate(ss.at!)} at ${new Date(ss.at!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.` : `Your ${minutes} minutes ran out at ${new Date(ss.at!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}; your choices were saved.`} For any change, contact the Registrar of Evaluation.</div>}
-      <RegistrationChooser student={me} actor="student" canChange={!closed && !locked} gate={(fn) => (sessionState(getDB(), me.id).state === 'active' ? fn() : setAsking(() => fn))} />
+      {/* Once registration is done the boxes give way to the courses, semester by semester. */}
+      {locked ? <MySemesters student={me} /> : <RegistrationChooser student={me} actor="student" canChange={!closed} gate={(fn) => (sessionState(getDB(), me.id).state === 'active' ? fn() : setAsking(() => fn))} />}
       {asking && (
         <Modal title="Start course registration?" onClose={() => setAsking(null)} footer={<><button className="btn btn-ghost" onClick={() => setAsking(null)}>Go back</button><button className="btn" onClick={start}>OK, start the {minutes} minutes</button></>}>
           <p>You will have only <strong>{minutes} minutes</strong> to finish your registration.</p>
@@ -550,7 +552,7 @@ function StudentRegistration() {
           </ul>
         </Modal>
       )}
-      <Card title="My registration history">
+      {!locked && <Card title="My registration history">
         {history.length === 0 ? <Empty text="No registrations yet." /> : (
           <div className="table-wrap"><table>
             <thead><tr><th>Course</th><th>Type</th><th>Term</th><th>Semester</th><th>Status</th><th>Date</th></tr></thead>
@@ -559,7 +561,50 @@ function StudentRegistration() {
             ) })}</tbody>
           </table></div>
         )}
-      </Card>
+      </Card>}
     </>
+  )
+}
+
+/** A student's registered courses, one collapsible table per semester (newest first, the coming semester open). */
+function MySemesters({ student }: { student: User }) {
+  const db = useDB()
+  const st = registrationStatus(db, student)
+  const bySem = semesterCourses(db, student.id)
+  // Next semester's class courses are registered with the class before its roster fills at promotion.
+  for (const c of st.core) { const l = bySem.get(st.nextSem) ?? []; if (!l.some((x) => x.id === c.id)) bySem.set(st.nextSem, [...l, c]) }
+  const sems = [...bySem.keys()].sort((a, b) => b - a)
+  const [open, setOpen] = useState<number[]>([st.nextSem])
+  const termOf = (sem: number) => db.registrations.find((r) => r.studentId === student.id && r.semester === sem && r.status === 'REGISTERED')?.term
+  const results = studentResults(db, student.id)
+  return (
+    <Card title="My registered courses" action={<Badge tone={st.complete ? 'success' : 'warning'}>{st.complete ? 'Registration complete' : 'Registration incomplete'}</Badge>}>
+      <div className="sem-list">{sems.map((sem) => {
+        const courses = bySem.get(sem)!.sort((a, b) => kindOf(a).localeCompare(kindOf(b)) || a.code.localeCompare(b.code))
+        const isOpen = open.includes(sem)
+        const credits = courses.reduce((t, c) => t + c.credits, 0)
+        const label = sem === st.nextSem && sem !== student.semester ? 'registered' : sem === student.semester ? 'current' : 'completed'
+        return (
+          <div key={sem} className={`sem-item ${isOpen ? 'open' : ''}`}>
+            <button className="sem-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? open.filter((x) => x !== sem) : [...open, sem])}>
+              <ChevronRight size={16} className="sem-chevron" />
+              <strong>Semester {sem}</strong>{termOf(sem) && <span className="muted small">{termOf(sem)}</span>}
+              <Badge tone={label === 'registered' ? 'info' : label === 'current' ? 'brand' : 'neutral'}>{label}</Badge>
+              <span className="grow" /><span className="small muted">{courses.length} courses · {credits} credits</span>
+            </button>
+            {isOpen && (
+              <div className="table-wrap"><table>
+                <thead><tr><th>Code</th><th>Course</th><th>Type</th><th>Credits</th><th>Faculty</th><th>Result</th></tr></thead>
+                <tbody>{courses.map((c) => { const r = results.find((x) => x.course.id === c.id); return (
+                  <tr key={c.id}><td><strong>{c.code}</strong></td><td>{c.name}</td><td>{isPan(c) ? <KindBadge c={c} /> : <span className="small">Class course</span>}</td><td>{c.credits}</td><td className="small">{userName(db, c.facultyId)}</td>
+                    <td>{r ? <Badge tone={r.row.pass ? 'success' : 'danger'}>{r.row.grade}</Badge> : <span className="small muted">{label === 'completed' ? '—' : label === 'current' ? 'In progress' : 'Registered'}</span>}</td></tr>
+                ) })}</tbody>
+                <tfoot><tr><td colSpan={3}><strong>Total</strong></td><td><strong>{credits}</strong></td><td colSpan={2} /></tr></tfoot>
+              </table></div>
+            )}
+          </div>
+        )
+      })}</div>
+    </Card>
   )
 }

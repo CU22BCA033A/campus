@@ -181,6 +181,13 @@ export function addUniversityCourses(db: DB, now: number) {
     reg(cFnd, sid, cls.semester, TERMS.current, curAt - 100 * DAY)
     reg(cls.program === 'BBA' ? cDat : i % 2 ? cFin : cPho, sid, cls.semester, TERMS.current, curAt - 100 * DAY)
   })
+  // Weekly periods for this term's university courses, kept clear of every class's own periods.
+  db.timetable.push(
+    { id: 'tp1', courseId: cFnd, day: 3, start: '14:00', end: '15:00', room: 'Seminar Hall A' },
+    { id: 'tp2', courseId: cPho, day: 5, start: '14:00', end: '15:30', room: 'Media Studio' },
+    { id: 'tp3', courseId: cFin, day: 6, start: '10:30', end: '12:00', room: 'LH-104' },
+    { id: 'tp4', courseId: cDat, day: 5, start: '14:00', end: '15:30', room: 'Lab-1' },
+  )
   const curTitle = `University Courses Examination – ${monthYear(curAt)}`
   session('es-pan-current', curTitle, curAt)
   for (const id of [cFnd, cPho, cFin, cDat]) { const c = db.courses.find((x) => x.id === id)!; pastAttendance(db, id, c.facultyId, c.studentIds, curAt) }

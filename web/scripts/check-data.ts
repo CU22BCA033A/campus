@@ -42,6 +42,16 @@ for (const s of st) {
 for (const c of db.courses) { const cls = db.classes.find((x: any) => x.id === c.classId); const f = db.users.find((u: any) => u.id === c.facultyId); if (f?.role !== 'faculty') bad.push(`${c.id} teacher ${c.facultyId}`); if (cls && c.semester > cls.semester + 1) bad.push(`${c.id} future semester`) }
 for (const a of db.attendance) { const c = db.courses.find((x: any) => x.id === a.courseId); if (c.facultyId !== a.markedBy) bad.push(`att ${a.id} marked by ${a.markedBy} not ${c.facultyId}`) }
 for (const t of db.timetable) if (!sets.course.has(t.courseId)) bad.push(`tt ${t.id}`)
+// No teacher, room or student is in two live periods at once
+const toMin = (x: string) => +x.slice(0, 2) * 60 + +x.slice(3)
+const live = db.timetable.filter((t: any) => { const c = db.courses.find((x: any) => x.id === t.courseId); if (c.kind && c.kind !== 'CORE') return c.term === db.registration.currentTerm; const cl = db.classes.find((x: any) => x.id === c.classId); return !cl || cl.semester === c.semester })
+for (const [i, a] of live.entries()) for (const b of live.slice(i + 1)) {
+  if (a.day !== b.day || !(toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end))) continue
+  const ca = db.courses.find((x: any) => x.id === a.courseId), cb = db.courses.find((x: any) => x.id === b.courseId)
+  if (ca.facultyId === cb.facultyId) bad.push(`timetable: ${ca.facultyId} teaches ${ca.code} and ${cb.code} at once`)
+  if (a.room === b.room) bad.push(`timetable: room ${a.room} double-booked (${ca.code}, ${cb.code})`)
+  if (ca.studentIds.some((sid: string) => cb.studentIds.includes(sid))) bad.push(`timetable: students in ${ca.code} and ${cb.code} at once`)
+}
 // Pan-university courses: roster = active registrations; registrations point at real students in eligible classes
 for (const c of db.courses.filter((x: any) => x.kind && x.kind !== 'CORE')) {
   const regs = db.registrations.filter((r: any) => r.courseId === c.id && r.status === 'REGISTERED').map((r: any) => r.studentId).sort()

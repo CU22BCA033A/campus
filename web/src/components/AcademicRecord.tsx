@@ -9,20 +9,12 @@ import { backlogCountOf, cgpaOf, fmtCgpa, transcript } from '../academics'
 import { classLabel } from '../classes'
 import { attendanceStats, fmtDate, isCurrentCourse, userName } from '../lib'
 import { studentResults } from '../results'
-import { isPan, KIND_LABEL, kindOf } from '../registration'
+import { isPan, KIND_LABEL, kindOf, semesterCourses } from '../registration'
 import { KindBadge, StudentRegistrationModal } from '../pages/Registration'
-import type { Course, DB } from '../data/types'
+import type { Course } from '../data/types'
 
 type Attempt = ReturnType<typeof studentResults>[number]
 
-/** Everything a student registered for, semester by semester (class courses by roster, baskets by registration). */
-export function semesterCourses(db: DB, studentId: string) {
-  const bySem = new Map<number, Course[]>()
-  const add = (sem: number, c: Course) => { const l = bySem.get(sem) ?? []; if (!l.some((x) => x.id === c.id)) bySem.set(sem, [...l, c]) }
-  for (const c of db.courses) if (!isPan(c) && c.studentIds.includes(studentId)) add(c.semester, c)
-  for (const r of db.registrations) if (r.studentId === studentId && r.status === 'REGISTERED') { const c = db.courses.find((x) => x.id === r.courseId); if (c) add(r.semester, c) }
-  return bySem
-}
 
 /**
  * A student's complete academic record for the Registrar of Evaluation (and other student-record offices):
