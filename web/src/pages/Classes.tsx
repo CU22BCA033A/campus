@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowUpCircle, Download, GraduationCap, Pencil, Plus, Printer, Users } from 'lucide-react'
+import { ArrowUpCircle, Download, GraduationCap, Pencil, Plus, Printer, Trash2, Users } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import EditUser from '../components/EditUser'
@@ -10,6 +10,7 @@ import { classAnalysis, classColor, classCourses, classLabel, classResults, clas
 import { attendanceStats, matches, userName } from '../lib'
 import type { ClassGroup, Course, User } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor } from '../components/RecordEditor'
 
 const PROGRAMS = ['BCA', 'BBA', 'B.Sc Data Science', 'B.Com']
 
@@ -31,6 +32,7 @@ export default function Classes() {
   }
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
+  const [editCls, setEditCls] = useState<ClassGroup | null>(null)
   const [newClass, setNewClass] = useState(false)
   const [cDraft, setCDraft] = useState({ program: 'BCA', batch: new Date().getFullYear(), section: 'A', semester: 1, maxSemesters: 6, mentorId: '' })
   const [courseDraft, setCourseDraft] = useState<Partial<Course> | null>(null)
@@ -95,6 +97,7 @@ export default function Classes() {
 
       {cls && (
         <>
+          {manage && <div className="row gap wrap"><span className="small muted grow">{classLabel(cls)} · mentor {cls.mentorId ? userName(db, cls.mentorId) : '—'}</span><button className="btn btn-ghost btn-sm" onClick={() => setEditCls(cls)}><Pencil size={12} /> Edit class</button><button className="btn btn-ghost btn-sm" onClick={() => { if (classStudents(db, cls.id).length) return alert('Move or remove the students first; a class with students cannot be deleted.'); if (deleteRecord('classes', cls.id, classLabel(cls), me.id, (d) => { d.courses = d.courses.filter((c) => c.classId !== cls.id || d.resultSheets.some((sh) => sh.courseId === c.id && sh.status === 'PUBLISHED')) })) setClassId(db.classes.find((c) => c.id !== cls.id)?.id ?? '') }}><Trash2 size={12} /> Delete class</button></div>}
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'students', label: 'Students', count: classStudents(db, cls.id).length }, { id: 'courses', label: 'Courses & teachers', count: classCourses(db, cls).length }, { id: 'results', label: 'Results & promotion' }]} />
           {tab === 'students' && <ClassStudents cls={cls} q={q} onEdit={setEditing} />}
           {tab === 'courses' && (
@@ -132,6 +135,7 @@ export default function Classes() {
       )}
 
       {editing && <EditUser user={editing} onClose={() => setEditing(null)} />}
+      {editCls && <RecordEditor title={`Edit ${classLabel(editCls)}`} collection="classes" record={editCls} actorId={me.id} onClose={() => setEditCls(null)} onSaved={() => update((d) => resyncRosters(d))} fields={[{ key: 'program', label: 'Programme', required: true }, { key: 'batch', label: 'Batch (admission year)', type: 'number', required: true }, { key: 'section', label: 'Section', required: true }, { key: 'semester', label: 'Current semester', type: 'number', required: true, hint: 'Normally changed by Promote' }, { key: 'maxSemesters', label: 'Total semesters', type: 'number' }, { key: 'mentorId', label: 'Mentor', type: 'select', options: db.users.filter((u) => u.role === 'faculty').map((u) => ({ value: u.id, label: u.name })) }]} />}
       {newClass && (
         <Modal title="New class" onClose={() => setNewClass(false)} footer={<><button className="btn btn-ghost" onClick={() => setNewClass(false)}>Cancel</button><button className="btn" onClick={createClass}>Create class</button></>}>
           <div className="grid grid-2">

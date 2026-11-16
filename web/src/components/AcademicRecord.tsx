@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ListChecks, Printer } from 'lucide-react'
+import { CalendarCheck, ListChecks, Printer } from 'lucide-react'
+import StudentAttendanceEditor from './StudentAttendanceEditor'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Stat } from './ui'
 import { can } from '../access'
@@ -32,6 +33,7 @@ export default function AcademicRecord({ studentId }: { studentId: string }) {
   const db = useDB()
   const me = useCurrentUser()!
   const [managing, setManaging] = useState(false)
+  const [attendance, setAttendance] = useState(false)
   const s = db.users.find((u) => u.id === studentId)!
   const cls = db.classes.find((c) => c.id === s.classId)
   const sems = transcript(db, s.id)
@@ -64,6 +66,7 @@ export default function AcademicRecord({ studentId }: { studentId: string }) {
         <div className="row gap">
           {office && <button className="btn btn-outline btn-sm" onClick={() => setManaging(true)}><ListChecks size={14} /> Course registration</button>}
           {office && backlogCountOf(s) > 0 && <Link className="btn btn-outline btn-sm" to="/results">Register backlogs</Link>}
+          <button className="btn btn-outline btn-sm" onClick={() => setAttendance(true)}><CalendarCheck size={14} /> Attendance</button>
           <button className="btn btn-ghost btn-sm" onClick={() => window.print()}><Printer size={14} /> Print record</button>
         </div>
       </div>
@@ -137,6 +140,7 @@ export default function AcademicRecord({ studentId }: { studentId: string }) {
           </table></div>
         )}
       </Card>
+      {attendance && <StudentAttendanceEditor studentId={s.id} onClose={() => setAttendance(false)} />}
       {managing && <StudentRegistrationModal studentId={s.id} manage={office} onClose={() => setManaging(false)} />}
     </div>
   )

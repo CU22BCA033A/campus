@@ -18,7 +18,8 @@ export const classCourses = (db: DB, cls: ClassGroup) => db.courses.filter((c) =
 export function resyncRosters(d: DB) {
   for (const c of d.courses) {
     const cls = d.classes.find((x) => x.id === c.classId)
-    if (cls && c.semester === cls.semester) c.studentIds = d.users.filter((u) => u.role === 'student' && u.classId === cls.id).map((u) => u.id)
+    // Class roster, minus students the office dropped, plus students it added (e.g. transfers, repeaters).
+    if (cls && c.semester === cls.semester) c.studentIds = [...new Set([...d.users.filter((u) => u.role === 'student' && u.classId === cls.id && !(c.droppedIds ?? []).includes(u.id)).map((u) => u.id), ...(c.extraIds ?? [])])]
   }
   // Students mirror their class's programme/semester/section.
   for (const u of d.users) {

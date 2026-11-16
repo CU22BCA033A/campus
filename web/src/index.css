@@ -268,3 +268,44 @@ tbody tr:hover { background: var(--surface-2); }
 .sgpa-bar { width: 100%; border-radius: 6px 6px 0 0; min-height: 4px; }
 .seat-bar { display: block; height: 6px; border-radius: 99px; background: var(--surface-2, #eef0f3); overflow: hidden; margin-top: 3px; } .seat-bar > span { display: block; height: 100%; border-radius: 99px; }
 .nowrap { white-space: nowrap; }
+.toolbar-search { width: 320px; max-width: 100%; } .toolbar-search .page-search { width: 100%; }
+
+/* Venue availability timeline */
+.venue-row { display: grid; grid-template-columns: 220px 1fr auto; gap: 12px; align-items: center; }
+.timeline { position: relative; height: 30px; background: var(--surface-2, #eef0f3); border-radius: 6px; overflow: hidden; }
+.timeline-closed { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, transparent 0 4px, rgba(0,0,0,.06) 4px 8px); }
+.timeline-block { position: absolute; top: 3px; bottom: 3px; background: #9aa3ad; color: #fff; border-radius: 4px; font-size: 11px; padding: 0 4px; overflow: hidden; white-space: nowrap; display: flex; align-items: center; }
+.timeline-block.pending { background: var(--warning); }
+.timeline-block.mine { outline: 2px solid var(--brand); }
+.timeline-scale { position: relative; height: 14px; margin-left: 232px; margin-right: 70px; }
+.timeline-scale span { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--text-muted); }
+@media (max-width: 760px) { .venue-row { grid-template-columns: 1fr; } .timeline-scale { display: none; } }
+.member-hit { width: 100%; border: 0; background: none; cursor: pointer; font: inherit; color: inherit; } .member-hit:hover { background: var(--surface-2, #f3f4f6); } .list-item.selected { background: var(--brand-light, #f8eaec); } .receipt { border: 1px dashed var(--border); padding: 14px; border-radius: 8px; }
+.round-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.round-step { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--surface-2, #eef0f3); color: var(--text-muted); }
+.round-step.done { background: var(--success-bg, #e6f4ec); color: var(--success); }
+.round-step.now { background: var(--info-bg, #e8f0fb); color: var(--info); font-weight: 700; }
+
+/* Hall tickets: one per page */
+.hall-ticket-sheet { display: none; }
+@media print {
+  body.printing-tickets #root { display: none !important; }
+  body.printing-tickets .hall-ticket-sheet { display: block; }
+  .hall-ticket { page-break-after: always; break-after: page; padding: 8mm 4mm; font-size: 12px; color: #000; }
+  .hall-ticket header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+  .hall-ticket table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .hall-ticket td, .hall-ticket th { border: 1px solid #555; padding: 5px 6px; text-align: left; font-size: 11.5px; }
+  .hall-ticket .photo-box { width: 30mm; height: 35mm; text-align: center; color: #888; }
+  .hall-ticket .ticket-held { margin-top: 8px; border: 1px solid #b00; padding: 6px; }
+  .hall-ticket .ticket-rules { margin-top: 10px; padding-left: 18px; font-size: 11px; }
+  .hall-ticket footer { margin-top: 28px; }
+}
+
+/* Proctoring */
+.proctor-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--warning-bg, #fcf1de); color: var(--warning); font-size: 12px; font-weight: 600; border-radius: 8px; }
+.proctor-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(20, 0, 0, .72); display: flex; align-items: center; justify-content: center; }
+.proctor-card { background: var(--surface); color: var(--text); padding: 26px; border-radius: 14px; max-width: 440px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.proctor-card svg { color: var(--danger); }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+.pick { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; cursor: pointer; font-size: 13px; }
+.pick.on { border-color: var(--brand); background: var(--brand-light, #f8eaec); }

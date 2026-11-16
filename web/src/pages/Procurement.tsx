@@ -4,8 +4,9 @@ import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { approvalChain, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers, persona } from '../access'
-import type { Asset, Office, PRStatus, PurchaseRequest, User } from '../data/types'
+import type { Asset, DB, Office, PRStatus, PurchaseRequest, User } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 const CATS: PurchaseRequest['category'][] = ['IT Equipment', 'Furniture', 'Lab Equipment', 'Stationery', 'Sports']
 const HOD_OF: Record<string, string> = { 'Computer Applications': 'f2', Mathematics: 'f3' }
@@ -29,6 +30,8 @@ export default function Procurement() {
   const canAssets = can(user, 'manageAssets')
   const seesAll = isAdmin || can(user, 'approvePurchaseRegistrar')
   const [tab, setTab] = useState<'requests' | 'assets'>('requests')
+  const [editPR, setEditPR] = useState<PurchaseRequest | null>(null)
+  const [editAsset, setEditAsset] = useState<DB['assets'][number] | null>(null)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ title: '', category: 'IT Equipment' as PurchaseRequest['category'], quantity: 1, unitCost: 0, vendor: '', warrantyMonths: 12 })
   const [assetFilter, setAssetFilter] = useState<'all' | 'expiring' | 'expired'>('all')
@@ -121,6 +124,7 @@ export default function Procurement() {
                   {canApprove(p, user) && <><button className="btn btn-success btn-sm" onClick={() => decide(p, true)}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => decide(p, false)}>Reject</button></>}
                   {isAdmin && p.status === 'APPROVED' && <button className="btn btn-sm" onClick={() => issuePO(p)}>Issue purchase order</button>}
                   {isAdmin && p.status === 'PO_ISSUED' && <button className="btn btn-sm" onClick={() => receive(p)}><PackageCheck size={14} /> Mark consignment received</button>}
+                  {(isAdmin || (p.requestedBy === user.id && p.status.startsWith('PENDING'))) && <RowActions label={p.title} onEdit={() => setEditPR(p)} onDelete={() => deleteRecord('purchaseRequests', p.id, `request "${p.title}"`, user.id)} />}
                 </div>
               </Card>
             )
@@ -137,7 +141,7 @@ export default function Procurement() {
                 <td>{a.category}</td><td>{a.assignedTo ? userName(db, a.assignedTo) : a.location}</td>
                 <td><Badge tone={a.warrantyUntil < now ? 'danger' : a.warrantyUntil < now + 90 * 86_400_000 ? 'warning' : 'success'}>{fmtDate(a.warrantyUntil)}</Badge></td>
                 <td><Badge tone={a.status === 'ALLOTTED' ? 'info' : a.status === 'MAINTENANCE' ? 'warning' : a.status === 'RETIRED' ? 'neutral' : 'success'}>{a.status.replace('_', ' ')}</Badge></td>
-                {canAssets && <td><div className="row gap">
+                {canAssets && <td><div className="row gap"><RowActions label={a.name} onEdit={() => setEditAsset(a)} onDelete={() => deleteRecord('assets', a.id, `${a.tag} ${a.name}`, user.id)} />
                   {a.status === 'IN_STOCK' && <button className="btn btn-outline btn-sm" onClick={() => { setAllot(a); setAllotTo('') }}>Allot</button>}
                   {a.status === 'ALLOTTED' && <button className="btn btn-outline btn-sm" onClick={() => update((d) => { const x = d.assets.find((y) => y.id === a.id)!; x.status = 'IN_STOCK'; x.assignedTo = undefined; x.location = 'Central Store' })}>Return</button>}
                   {a.status !== 'MAINTENANCE' && a.status !== 'RETIRED' && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.assets.find((y) => y.id === a.id)!.status = 'MAINTENANCE' })}>Maintenance</button>}
@@ -166,6 +170,8 @@ export default function Procurement() {
           <Field label="Allot to"><select className="select" value={allotTo} onChange={(e) => setAllotTo(e.target.value)}><option value="">Select staff…</option>{db.users.filter((u) => u.role === 'faculty' || u.role === 'admin').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
         </Modal>
       )}
+      {editPR && <RecordEditor title={`Edit ${editPR.title}`} collection="purchaseRequests" record={editPR} actorId={user.id} onClose={() => setEditPR(null)} fields={[{ key: 'title', label: 'Item', required: true }, { key: 'vendor', label: 'Vendor' }, { key: 'quantity', label: 'Quantity', type: 'number' }, { key: 'unitCost', label: 'Unit cost (₹)', type: 'number' }, { key: 'warrantyMonths', label: 'Warranty (months)', type: 'number' }, { key: 'department', label: 'Department' }]} />}
+      {editAsset && <RecordEditor title={`Edit ${editAsset.tag}`} collection="assets" record={editAsset} actorId={user.id} onClose={() => setEditAsset(null)} fields={[{ key: 'name', label: 'Asset', required: true }, { key: 'tag', label: 'Tag' }, { key: 'location', label: 'Location' }, { key: 'cost', label: 'Cost (₹)', type: 'number' }, { key: 'warrantyUntil', label: 'Warranty until', type: 'dateMs' }, { key: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'ALLOTTED', 'MAINTENANCE', 'RETIRED'].map((x) => ({ value: x, label: x.replace('_', ' ').toLowerCase() })) }]} />}
     </>
   )
 }

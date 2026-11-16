@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import { MessageSquare, Send } from 'lucide-react'
 import { uid, update, useCurrentUser, useDB } from '../data/store'
+import type { DB } from '../data/types'
 import { Avatar, Badge, Card, Empty, PageHeader, SearchBox } from '../components/ui'
 import { courseName, coursesFor, timeAgo, matches, userName } from '../lib'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 /** courseId: a course id shows that course's thread; undefined shows everything (campus feed). */
 export function Discussion({ courseId }: { courseId?: string }) {
   const db = useDB()
   const user = useCurrentUser()!
   const [text, setText] = useState('')
+  const [editP, setEditP] = useState<DB['posts'][number] | null>(null)
+  const moderator = user.role === 'admin' || user.role === 'faculty'
   const [reply, setReply] = useState<Record<string, string>>({})
   const [term, setTerm] = useState('')
   const allowed = new Set(coursesFor(db, user).map((c) => c.id))
@@ -39,7 +43,7 @@ export function Discussion({ courseId }: { courseId?: string }) {
 
   return (
     <div className="stack">
-      <SearchBox value={term} onChange={setTerm} placeholder="Search posts or people…" />
+      <div className="row between wrap gap"><span className="small muted">{posts.length} discussion{posts.length === 1 ? '' : 's'}</span><div className="toolbar-search"><SearchBox value={term} onChange={setTerm} placeholder="Search posts or people…" /></div></div>
       <Card>
         <div className="row gap" style={{ alignItems: 'flex-start' }}>
           <Avatar name={user.name} color={user.avatarColor} />
@@ -58,7 +62,7 @@ export function Discussion({ courseId }: { courseId?: string }) {
             <div className="row gap" style={{ alignItems: 'flex-start' }}>
               <Avatar name={a.name} color={a.avatarColor} />
               <div className="grow">
-                <div className="row gap wrap"><strong>{a.name}</strong>{a.role !== 'student' && <Badge tone="brand">{a.role}</Badge>}<span className="small muted">{timeAgo(p.createdAt)}</span>{courseId === undefined && <Badge tone="neutral">{p.courseId ? courseName(db, p.courseId) : 'Campus'}</Badge>}</div>
+                <div className="row gap wrap"><strong>{a.name}</strong>{a.role !== 'student' && <Badge tone="brand">{a.role}</Badge>}<span className="small muted">{timeAgo(p.createdAt)}</span>{(p.authorId === user.id || moderator) && <RowActions label="post" onEdit={p.authorId === user.id ? () => setEditP(p) : undefined} onDelete={() => deleteRecord('posts', p.id, 'this post and its replies', user.id)} />}{courseId === undefined && <Badge tone="neutral">{p.courseId ? courseName(db, p.courseId) : 'Campus'}</Badge>}</div>
                 <p style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{p.text}</p>
                 <div className="stack" style={{ marginTop: 10, gap: 8, borderLeft: '2px solid var(--border)', paddingLeft: 12 }}>
                   {p.replies.map((r) => {
@@ -80,6 +84,7 @@ export function Discussion({ courseId }: { courseId?: string }) {
           </Card>
         )
       })}
+      {editP && <RecordEditor title="Edit post" collection="posts" record={editP} actorId={user.id} onClose={() => setEditP(null)} fields={[{ key: 'text', label: 'Post', type: 'textarea', required: true }]} />}
     </div>
   )
 }

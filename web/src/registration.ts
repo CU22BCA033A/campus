@@ -31,10 +31,12 @@ export function registrationStatus(db: DB, s: User) {
   const foundation = regs.filter((c) => kindOf(c) === 'FOUNDATION')
   const open = regs.filter((c) => kindOf(c) === 'OPEN_ELECTIVE')
   const nextSem = semesterForRegistration(db, s)
-  const core = db.courses.filter((c) => kindOf(c) === 'CORE' && c.classId === s.classId && c.semester === nextSem)
+  const core = db.courses.filter((c) => kindOf(c) === 'CORE' && c.semester === nextSem && ((c.classId === s.classId && !(c.droppedIds ?? []).includes(s.id)) || (c.extraIds ?? []).includes(s.id)))
   const credits = [...core, ...regs].reduce((t, c) => t + c.credits, 0)
-  const complete = foundation.length >= db.registration.minFoundation && open.length >= db.registration.minOpenElective
-  return { term, nextSem, core, foundation, open, credits, complete }
+  const { minCredits = 0, maxCredits } = db.registration
+  const creditsOk = credits >= minCredits
+  const complete = foundation.length >= db.registration.minFoundation && open.length >= db.registration.minOpenElective && creditsOk
+  return { term, nextSem, core, foundation, open, credits, creditsOk, minCredits, maxCredits, overMax: maxCredits !== undefined && credits > maxCredits, complete }
 }
 
 /** Register a student in a pan-university course; returns an error message or null. */
@@ -42,8 +44,20 @@ export function registerCourse(d: DB, courseId: string, studentId: string, actor
   const c = d.courses.find((x) => x.id === courseId)
   const s = d.users.find((u) => u.id === studentId)
   if (!c || !s) return 'Course or student not found.'
-  if (!isPan(c)) return 'Class courses are taken by the whole class.'
-  if (c.studentIds.includes(studentId)) return `${s.name} is already registered in ${c.code}.`
+  if (c.studentIds.includes(studentId) || (c.extraIds ?? []).includes(studentId)) return `${s.name} is already registered in ${c.code}.`
+  if (!isPan(c)) {
+    // Class courses: the office can add a student from outside the class (or re-add a dropped one).
+    if (!override) return 'Class courses are taken by the whole class; the Registrar of Evaluation can add other students.'
+    c.droppedIds = (c.droppedIds ?? []).filter((x) => x !== studentId)
+    if (s.classId !== c.classId) c.extraIds = [...new Set([...(c.extraIds ?? []), studentId])]
+    c.studentIds.push(studentId)
+    d.registrations.push({ id: `reg-${courseId}-${studentId}-${Date.now().toString(36)}`, courseId, studentId, semester: c.semester, term: c.term ?? d.registration.currentTerm, status: 'REGISTERED', at: Date.now(), by: actorId })
+    return null
+  }
+  if (!override && d.registration.maxCredits !== undefined) {
+    const st = registrationStatus(d, s)
+    if (c.term === d.registration.registrationTerm && st.credits + c.credits > d.registration.maxCredits) return `That would make ${st.credits + c.credits} credits; the limit is ${d.registration.maxCredits} per semester.`
+  }
   if (!override && !(c.classIds ?? []).includes(s.classId ?? '')) return `${c.code} is not offered to ${s.name}'s class.`
   if (!override && seatsLeft(c) <= 0) return `${c.code} is full (${c.slots} seats).`
   c.studentIds.push(studentId)
@@ -51,9 +65,15 @@ export function registerCourse(d: DB, courseId: string, studentId: string, actor
   return null
 }
 
-export function dropCourse(d: DB, courseId: string, studentId: string) {
+export function dropCourse(d: DB, courseId: string, studentId: string, actorId = '') {
   const c = d.courses.find((x) => x.id === courseId)
-  if (c) c.studentIds = c.studentIds.filter((x) => x !== studentId)
+  if (!c) return
+  c.studentIds = c.studentIds.filter((x) => x !== studentId)
+  if (!isPan(c)) {
+    c.extraIds = (c.extraIds ?? []).filter((x) => x !== studentId)
+    if (d.users.find((u) => u.id === studentId)?.classId === c.classId) c.droppedIds = [...new Set([...(c.droppedIds ?? []), studentId])]
+    if (!d.registrations.some((r) => r.courseId === courseId && r.studentId === studentId && r.status === 'REGISTERED')) d.registrations.push({ id: `reg-${courseId}-${studentId}-${Date.now().toString(36)}`, courseId, studentId, semester: c.semester, term: d.registration.currentTerm, status: 'REGISTERED', at: Date.now(), by: actorId })
+  }
   for (const r of d.registrations) if (r.courseId === courseId && r.studentId === studentId && r.status === 'REGISTERED') { r.status = 'DROPPED'; r.droppedAt = Date.now() }
 }
 

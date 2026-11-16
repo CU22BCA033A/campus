@@ -121,7 +121,7 @@ export const TERMS = { past: 'Even 2025-26', current: 'Odd 2026-27', next: 'Even
  * published) and next term (registration open, some students registered, one elective nearly full).
  */
 export function addUniversityCourses(db: DB, now: number) {
-  db.registration = { currentTerm: TERMS.current, registrationTerm: TERMS.next, open: true, closesAt: now + 10 * DAY, minFoundation: 1, minOpenElective: 1 }
+  db.registration = { currentTerm: TERMS.current, registrationTerm: TERMS.next, open: true, closesAt: now + 10 * DAY, minFoundation: 1, minOpenElective: 1, minCredits: 12, maxCredits: 26 }
   db.registrations = []
   const classesFor = (programs: string[]) => db.classes.filter((c) => programs.includes(c.program)).map((c) => c.id)
   const student = (id: string) => db.users.find((u) => u.id === id)!
@@ -205,5 +205,8 @@ export function addUniversityCourses(db: DB, now: number) {
     { id: 'c-bca601', code: 'BCA601', name: 'Cloud Computing', facultyId: 'f2', credits: 4, semester: 6, description: 'Virtualisation, cloud service models, deployment and DevOps basics.', studentIds: [], classId: 'cls-bca-2024-a', kind: 'CORE', slots: 60 },
     { id: 'c-bca602', code: 'BCA602', name: 'Major Project', facultyId: 'f1', credits: 6, semester: 6, description: 'Team project from proposal to deployment.', studentIds: [], classId: 'cls-bca-2024-a', kind: 'CORE', slots: 60 },
     { id: 'c-bca401', code: 'BCA401', name: 'Java Programming', facultyId: 'f1', credits: 4, semester: 4, description: 'Object-oriented programming in Java, collections and JDBC.', studentIds: [], classId: 'cls-bca-2025-a', kind: 'CORE', slots: 60 },
+    { id: 'c-bca402', code: 'BCA402', name: 'Design & Analysis of Algorithms', facultyId: 'f2', credits: 4, semester: 4, description: 'Complexity, divide and conquer, greedy methods and dynamic programming.', studentIds: [], classId: 'cls-bca-2025-a', kind: 'CORE', slots: 60 },
+    { id: 'c-bba601', code: 'BBA601', name: 'Strategic Management', facultyId: 'f4', credits: 4, semester: 6, description: 'Strategy formulation, competitive analysis and implementation.', studentIds: [], classId: 'cls-bba-2024-a', kind: 'CORE', slots: 60 },
+    { id: 'c-bba602', code: 'BBA602', name: 'International Business', facultyId: 'f4', credits: 4, semester: 6, description: 'Trade theory, foreign markets, FDI and global operations.', studentIds: [], classId: 'cls-bba-2024-a', kind: 'CORE', slots: 60 },
   )
 }

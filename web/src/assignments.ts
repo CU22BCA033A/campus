@@ -1,5 +1,6 @@
 /** Multi-part assignments: answer formats, auto-marking of MCQ parts and totals. */
 import type { Assignment, AssignmentPart, FileKind, PartAnswer, PartType, Submission } from './data/types'
+import { blankMatches } from './assess'
 
 export const PART_LABEL: Record<PartType, string> = {
   text: 'Written answer',
@@ -7,6 +8,7 @@ export const PART_LABEL: Record<PartType, string> = {
   file: 'File upload',
   mcq: 'MCQ: one correct',
   msq: 'MCQ: multiple correct',
+  blank: 'Fill in the blank',
 }
 export const FILE_KINDS: Record<FileKind, { label: string; accept: string; exts: string[] }> = {
   pdf: { label: 'PDF', accept: '.pdf,application/pdf', exts: ['pdf'] },
@@ -17,7 +19,7 @@ export const FILE_KINDS: Record<FileKind, { label: string; accept: string; exts:
   zip: { label: 'ZIP', accept: '.zip,.rar,.7z', exts: ['zip', 'rar', '7z'] },
   any: { label: 'Any file', accept: '', exts: [] },
 }
-export const isAuto = (p: AssignmentPart) => p.type === 'mcq' || p.type === 'msq'
+export const isAuto = (p: AssignmentPart) => p.type === 'mcq' || p.type === 'msq' || p.type === 'blank'
 
 /** Parts of an assignment; classic assignments get a written answer plus an optional file. */
 export function partsOf(a: Assignment): AssignmentPart[] {
@@ -39,11 +41,12 @@ export function answerOf(s: Submission | undefined, p: AssignmentPart): PartAnsw
 }
 
 export const isAnswered = (p: AssignmentPart, a?: PartAnswer) =>
-  !!a && (p.type === 'file' ? !!a.fileName : isAuto(p) ? !!a.choices?.length : !!a.text?.trim())
+  !!a && (p.type === 'file' ? !!a.fileName : p.type === 'mcq' || p.type === 'msq' ? !!a.choices?.length : !!a.text?.trim())
 
 /** Auto mark for an MCQ part: full marks only when exactly the correct options are chosen. */
 export function autoMark(p: AssignmentPart, a?: PartAnswer) {
   if (!isAuto(p)) return undefined
+  if (p.type === 'blank') return blankMatches(p.accepted, a?.text) ? p.marks : 0
   const chosen = [...(a?.choices ?? [])].sort().join(',')
   return chosen && chosen === [...(p.correct ?? [])].sort().join(',') ? p.marks : 0
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Pencil, Plus, Search } from 'lucide-react'
+import { Download, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { audit, switchUser, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Field, Modal, PageHeader, Progress, Stat } from '../components/ui'
 import { attendanceStats, feeOutstanding, inr, matches, isCurrentCourse } from '../lib'
@@ -10,6 +10,7 @@ import EditUser, { canEditProfile } from '../components/EditUser'
 import type { Office, Role, User } from '../data/types'
 import { can, OFFICES, persona, personaLabel } from '../access'
 import { Link, useNavigate } from 'react-router-dom'
+import { deleteRecord } from '../components/RecordEditor'
 
 export function AdminUsers() {
   const db = useDB()
@@ -80,6 +81,11 @@ export function AdminUsers() {
                       {statusAllowed(u) && u.status === 'ACTIVE' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(u, 'DEACTIVATED')}>Deactivate</button>}
                       {statusAllowed(u) && u.status === 'DEACTIVATED' && <button className="btn btn-success btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Activate</button>}
                       {statusAllowed(u) && u.status === 'LOCKED' && <button className="btn btn-sm" onClick={() => setStatus(u, 'ACTIVE')}>Unlock</button>}
+                      {persona(me) === 'super' && u.id !== me.id && <button className="icon-btn" aria-label={`Delete ${u.name}`} title="Delete user" onClick={() => {
+                        const used = db.submissions.some((x) => x.studentId === u.id) || db.attempts.some((x) => x.studentId === u.id) || db.results.some((x) => x.studentId === u.id) || db.fees.some((x) => x.studentId === u.id && (x.paidAt || x.paidAmount)) || db.courses.some((c) => c.facultyId === u.id) || db.loans.some((l) => l.userId === u.id)
+                        if (used) return alert(`${u.name} has academic, fee, library or teaching records. Deactivate the account instead so the records stay intact.`)
+                        deleteRecord('users', u.id, `user ${u.name}`, me.id, (d) => { d.fees = d.fees.filter((x) => x.studentId !== u.id); for (const c of d.courses) c.studentIds = c.studentIds.filter((x) => x !== u.id); d.registrations = d.registrations.filter((r) => r.studentId !== u.id) })
+                      }}><Trash2 size={14} /></button>}
                       {statusAllowed(u) && <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.password = 'welcome123'; x.firstLogin = true }); audit(me.id, 'PASSWORD_RESET', u.name); alert(`Password reset. ${u.name} must set a new password at next login (temporary: welcome123).`) }}>Reset password</button>}
                       {persona(me) === 'super' && u.id !== me.id && u.status === 'ACTIVE' && !u.firstLogin && <button className="btn btn-ghost btn-sm" title="View the portal as this user" onClick={() => { switchUser(u.id); navigate('/home') }}>View as</button>}
                     </div>

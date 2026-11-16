@@ -7,6 +7,7 @@ import { Avatar, Badge, Card, PageHeader, Progress, Tabs } from '../components/u
 import { attendanceStats, coursesFor, fmtDate, matches, userName, isCurrentCourse } from '../lib'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
+import StudentAttendanceEditor from '../components/StudentAttendanceEditor'
 
 export default function Attendance() {
   const user = useCurrentUser()!
@@ -40,6 +41,9 @@ function AttendanceReport() {
     .filter((r) => matches(term, r.s.name, r.s.rollNo, r.s.program, r.s.batch)).filter((r) => !onlyShort || r.per.some((x) => x.a.pct < threshold)).sort((a, b) => a.overall.pct - b.overall.pct)
   const me = useCurrentUser()!
   const canNotify = can(me, 'manageAttendance')
+  const [editing, setEditing] = useState<string | null>(null)
+  // Columns: this semester's courses that the listed students take.
+  const cols = db.courses.filter((c) => isCurrentCourse(db, c) && rows.some((r) => c.studentIds.includes(r.s.id)))
   /** Warn students below the threshold (and their parents) course by course. */
   const notifyShortage = () => {
     let n = 0
@@ -71,16 +75,18 @@ function AttendanceReport() {
           <span className="muted small">{rows.length} student(s)</span>
         </div>
         <div className="table-wrap"><table>
-          <thead><tr><th>Student</th><th>Overall</th>{db.courses.filter((c) => isCurrentCourse(db, c)).map((c) => <th key={c.id}>{c.code}</th>)}</tr></thead>
+          <thead><tr><th>Student</th><th>Overall</th>{cols.map((c) => <th key={c.id}>{c.code}</th>)}<th /></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.s.id}>
               <td>{r.s.name}<div className="small muted">{r.s.rollNo}</div></td>
               <td><Badge tone={r.overall.pct >= threshold ? 'success' : 'danger'}>{r.overall.pct}%</Badge></td>
-              {db.courses.map((c) => { const x = r.per.find((y) => y.c.id === c.id); return <td key={c.id}>{x ? <span style={{ color: x.a.pct < threshold ? 'var(--danger)' : undefined, fontWeight: x.a.pct < threshold ? 700 : 400 }}>{x.a.pct}%</span> : '—'}</td> })}
+              {cols.map((c) => { const x = r.per.find((y) => y.c.id === c.id); return <td key={c.id}>{x ? <span style={{ color: x.a.pct < threshold ? 'var(--danger)' : undefined, fontWeight: x.a.pct < threshold ? 700 : 400 }}>{x.a.pct}%</span> : '—'}</td> })}
+              <td><button className="btn btn-ghost btn-sm" onClick={() => setEditing(r.s.id)}>Details / correct</button></td>
             </tr>
           ))}</tbody>
         </table></div>
       </Card>
+      {editing && <StudentAttendanceEditor studentId={editing} onClose={() => setEditing(null)} />}
     </>
   )
 }

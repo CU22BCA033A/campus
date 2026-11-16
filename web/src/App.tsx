@@ -13,7 +13,7 @@ import Grades from './pages/Grades'
 import Feedback from './pages/Feedback'
 import Feed from './pages/Feed'
 import { Clubs, Events, Notices, Polls } from './pages/Campus'
-import { Fees, GatePass, Transport, Venues } from './pages/Services'
+import { Fees, GatePass } from './pages/Services'
 import { AdminReports, AdminUsers, AuditLog } from './pages/Admin'
 import Admissions, { ApplyForm } from './pages/Admissions'
 import Exams from './pages/Exams'
@@ -29,6 +29,8 @@ import Person from './pages/People'
 import Results from './pages/Results'
 import Profile from './pages/Profile'
 import Registration from './pages/Registration'
+import Venues from './pages/Venues'
+import Transport from './pages/Transport'
 
 /** Signed-in, active, and allowed (by role/office) to open the current page. */
 function RequireAuth({ children }: { children: React.ReactNode }) {

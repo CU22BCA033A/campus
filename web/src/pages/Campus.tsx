@@ -5,14 +5,16 @@ import { notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Progress, Tabs } from '../components/ui'
 import { fmtDateTime, matches, timeAgo, userName } from '../lib'
 import { can } from '../access'
-import type { Club, Notice } from '../data/types'
+import type { Club, DB, Notice } from '../data/types'
 import { FilterBar, opts as optList, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 /* ---------------- Notice board ---------------- */
 export function Notices() {
   const db = useDB()
   const user = useCurrentUser()!
   const [cat, setCat] = useState<string>('All')
+  const [editN, setEditN] = useState<DB['notices'][number] | null>(null)
   const [term, setTerm] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Pick<Notice, 'title' | 'body' | 'category' | 'audience' | 'pinned'>>({ title: '', body: '', category: 'General', audience: 'all', pinned: false })
@@ -48,6 +50,7 @@ export function Notices() {
               {(can(user, 'moderateNotices') || n.postedBy === user.id) && (
                 <div className="row">
                   <button className="icon-btn" title={n.pinned ? 'Unpin' : 'Pin'} onClick={() => update((d) => { const x = d.notices.find((y) => y.id === n.id)!; x.pinned = !x.pinned })}><Pin size={16} /></button>
+                  <button className="icon-btn" title="Edit" aria-label={`Edit ${n.title}`} onClick={() => setEditN(n)}><Pencil size={16} /></button>
                   <button className="icon-btn" title="Delete" onClick={() => confirm('Delete this notice?') && update((d) => { d.notices = d.notices.filter((y) => y.id !== n.id) })}><Trash2 size={16} /></button>
                 </div>
               )}
@@ -66,6 +69,7 @@ export function Notices() {
           <label className="row gap"><input type="checkbox" checked={draft.pinned} onChange={(e) => setDraft({ ...draft, pinned: e.target.checked })} /> Pin to top</label>
         </Modal>
       )}
+      {editN && <RecordEditor title={`Edit notice`} collection="notices" record={editN} actorId={user.id} onClose={() => setEditN(null)} fields={[{ key: 'title', label: 'Title', required: true }, { key: 'category', label: 'Category', type: 'select', options: ['Academic', 'Exam', 'Event', 'Placement', 'General'].map((x) => ({ value: x, label: x })) }, { key: 'audience', label: 'Audience', type: 'select', options: [{ value: 'all', label: 'Everyone' }, { value: 'student', label: 'Students' }, { value: 'faculty', label: 'Faculty' }] }, { key: 'pinned', label: 'Pinned', type: 'checkbox' }, { key: 'body', label: 'Notice', type: 'textarea', required: true }]} />}
     </>
   )
 }
@@ -75,6 +79,8 @@ export function Events() {
   const db = useDB()
   const user = useCurrentUser()!
   const [tab, setTab] = useState<'upcoming' | 'mine' | 'past'>('upcoming')
+  const [editE, setEditE] = useState<DB['events'][number] | null>(null)
+  const manageEvents = can(user, 'manageClubs') || user.role === 'admin'
   const [term, setTerm] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ title: '', description: '', venue: '', when: '', capacity: 100 })
@@ -121,6 +127,7 @@ export function Events() {
                 <div className="small muted row gap"><MapPin size={14} /> {e.venue} · {fmtDateTime(e.startsAt)}</div>
                 <div><div className="row between small"><span>{e.rsvps.length} going</span><span className="muted">{e.capacity} seats</span></div><Progress value={(e.rsvps.length / e.capacity) * 100} tone="brand" /></div>
                 {e.startsAt > now && <button className={`btn ${going ? 'btn-outline' : ''}`} disabled={!going && full} onClick={() => toggle(e.id)}>{going ? 'Cancel RSVP' : full ? 'Full' : 'RSVP'}</button>}
+                {manageEvents && <div className="row between"><span className="small muted">{e.rsvps.length} RSVP(s)</span><RowActions label={e.title} onEdit={() => setEditE(e)} onDelete={() => { if (deleteRecord('events', e.id, e.title, user.id)) notify(e.rsvps, `Event cancelled: ${e.title}`, '/events') }} /></div>}
               </div>
             </Card>
           )
@@ -137,6 +144,7 @@ export function Events() {
           <Field label="Date & time"><input className="input" type="datetime-local" value={draft.when} onChange={(e) => setDraft({ ...draft, when: e.target.value })} /></Field>
         </Modal>
       )}
+      {editE && <RecordEditor title={`Edit ${editE.title}`} collection="events" record={editE} actorId={user.id} onClose={() => setEditE(null)} onSaved={() => notify(editE.rsvps, `Event updated: ${editE.title}. Check the time and venue.`, '/events')} fields={[{ key: 'title', label: 'Title', required: true }, { key: 'venue', label: 'Venue' }, { key: 'startsAt', label: 'Starts', type: 'datetimeMs', required: true }, { key: 'capacity', label: 'Capacity', type: 'number' }, { key: 'clubId', label: 'Organised by', type: 'select', options: db.clubs.map((c) => ({ value: c.id, label: c.name })) }, { key: 'description', label: 'Description', type: 'textarea' }]} />}
     </>
   )
 }
@@ -189,6 +197,7 @@ export function Clubs() {
                   {user.role === 'student' && c.active !== false && (member ? <button className="btn btn-outline" onClick={() => toggle(c.id)}>Leave club</button> : c.joinOpen === false ? <Badge>Membership closed</Badge> : <button className="btn" onClick={() => toggle(c.id)}>Join club</button>)}
                   {canEdit(c) && <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...c })}><Pencil size={12} /> Edit</button>}
                   {canEdit(c) && <button className="btn btn-ghost btn-sm" onClick={() => setMembers(c)}>Members</button>}
+                  {manage && <button className="icon-btn" aria-label={`Delete ${c.name}`} title="Delete" onClick={() => { if (deleteRecord('clubs', c.id, c.name, user.id, (d) => { for (const e of d.events) if (e.clubId === c.id) e.clubId = undefined })) notify(c.members, `${c.name} has been closed`, '/clubs') }}><Trash2 size={14} /></button>}
                   {manage && <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { const x = d.clubs.find((y) => y.id === c.id)!; x.active = x.active === false }); audit(user.id, 'CLUB_ARCHIVE', c.name) }}>{c.active === false ? 'Restore' : 'Archive'}</button>}
                 </div>
               </div>
@@ -224,6 +233,7 @@ export function Polls() {
   const db = useDB()
   const user = useCurrentUser()!
   const [creating, setCreating] = useState(false)
+  const modPolls = can(user, 'createPolls')
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState(['', ''])
   const [term, setTerm] = useState('')
@@ -250,7 +260,7 @@ export function Polls() {
           const closed = p.closesAt < Date.now()
           const showResults = mine !== undefined || closed || user.role !== 'student'
           return (
-            <Card key={p.id} title={p.question} action={<Badge tone={closed ? 'neutral' : 'success'}>{closed ? 'Closed' : `Closes ${timeAgo(p.closesAt)}`}</Badge>}>
+            <Card key={p.id} title={p.question} action={<div className="row gap"><Badge tone={closed ? 'neutral' : 'success'}>{closed ? 'Closed' : `Closes ${timeAgo(p.closesAt)}`}</Badge>{modPolls && (p.createdBy === user.id || user.role === 'admin') && <>{!closed && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.polls.find((x) => x.id === p.id)!.closesAt = Date.now() - 1 })}>Close now</button>}<button className="icon-btn" aria-label="Delete poll" onClick={() => deleteRecord('polls', p.id, `poll "${p.question}"`, user.id)}><Trash2 size={14} /></button></>}</div>}>
               <div className="stack" style={{ gap: 8 }}>
                 {p.options.map((o, i) => {
                   const n = Object.values(p.votes).filter((v) => v === i).length

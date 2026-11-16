@@ -7,6 +7,7 @@ import { attendanceStats, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo, us
 import { classCourses, classLabel, classResults } from '../classes'
 import { waitingList } from '../hostels'
 import type { DB, Office, User } from '../data/types'
+import { fineDue } from '../library'
 
 interface Task { text: string; sub?: string; to: string; tone?: 'warning' | 'danger' | 'info' }
 interface OfficeView {
@@ -150,7 +151,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Titles', value: db.books.length, hint: `${db.books.reduce((s, b) => s + b.copies, 0)} copies`, to: '/library' },
           { label: 'On loan', value: active.length, tone: 'info', to: '/library' },
           { label: 'Overdue', value: overdue.length, tone: 'danger', to: '/library' },
-          { label: 'Reservations', value: db.books.reduce((s, b) => s + b.reservations.length, 0), tone: 'accent', to: '/library' },
+          { label: 'Unpaid fines', value: inr(db.loans.reduce((t, l) => t + fineDue(db, l), 0)), tone: 'accent', to: '/library' },
         ],
         tasks: [...apptTasks, ...overdue.map((l) => ({ text: `Overdue: ${db.books.find((b) => b.id === l.bookId)?.title}`, sub: `${userName(db, l.userId)} · due ${fmtDate(l.dueAt)}`, to: '/library', tone: 'danger' as const }))],
         shortcuts: [{ to: '/library', label: 'Catalogue & issue desk' }],
@@ -159,7 +160,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
     case 'placement': {
       const open = db.drives.filter((d) => d.deadline > now())
       const applied = db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'APPLIED').map((a) => ({ d, a })))
-      const placed = new Set(db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'SELECTED').map((a) => a.studentId)))
+      const placed = new Set(db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'SELECTED' && a.offer === 'ACCEPTED' && d.kind !== 'Internship').map((a) => a.studentId)))
       return {
         stats: [
           { label: 'Active drives', value: open.length, to: '/placements' },
@@ -169,6 +170,33 @@ function view(db: DB, office: Office, user?: User): OfficeView {
         ],
         tasks: [...apptTasks, ...applied.map(({ d, a }) => ({ text: `Screen ${userName(db, a.studentId)} for ${d.company}`, sub: d.role, to: '/placements', tone: 'warning' as const }))],
         shortcuts: [{ to: '/placements', label: 'Drives' }, { to: '/alumni', label: 'Alumni network' }],
+      }
+    }
+    case 'transport': {
+      const pending = db.transportRequests.filter((r) => r.status === 'PENDING')
+      return {
+        stats: [
+          { label: 'Routes', value: db.routes.length, to: '/transport' },
+          { label: 'Riders', value: db.routes.reduce((t, r) => t + r.subscribers.length, 0), tone: 'info', to: '/transport' },
+          { label: 'Pass requests', value: pending.length, tone: 'warning', to: '/transport' },
+          { label: 'Seats free', value: db.routes.reduce((t, r) => t + Math.max(0, (r.capacity ?? 0) - r.subscribers.length), 0), tone: 'success', to: '/transport' },
+        ],
+        tasks: [...apptTasks, ...ticketTasks, ...pending.map((r) => ({ text: `Bus pass: ${userName(db, r.userId)}`, sub: `${db.routes.find((x) => x.id === r.routeId)?.name} · ${r.stop}`, to: '/transport', tone: 'warning' as const }))],
+        shortcuts: [{ to: '/transport', label: 'Routes, requests & riders' }],
+      }
+    }
+    case 'facilities': {
+      const today = new Date().toISOString().slice(0, 10)
+      const pending = db.bookings.filter((b) => b.status === 'PENDING')
+      return {
+        stats: [
+          { label: 'Venues', value: db.venues.filter((v) => v.active).length, to: '/venues' },
+          { label: 'Requests to approve', value: pending.length, tone: 'warning', to: '/venues' },
+          { label: 'Booked today', value: db.bookings.filter((b) => b.date === today && b.status === 'CONFIRMED').length, tone: 'info', to: '/venues' },
+          { label: 'Maintenance tickets', value: db.tickets.filter((t) => t.category === 'Maintenance' && !['RESOLVED', 'CLOSED'].includes(t.status)).length, tone: 'danger', to: '/help' },
+        ],
+        tasks: [...apptTasks, ...ticketTasks, ...pending.map((b) => ({ text: `Booking request: ${db.venues.find((v) => v.id === b.venueId)?.name}`, sub: `${fmtDate(b.date)} ${b.start}–${b.end} · ${userName(db, b.bookedBy)}`, to: '/venues', tone: 'warning' as const }))],
+        shortcuts: [{ to: '/venues', label: 'Venues & bookings' }, { to: '/help', label: 'Maintenance tickets' }],
       }
     }
     case 'admissions': {

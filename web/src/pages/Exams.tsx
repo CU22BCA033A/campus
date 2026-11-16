@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { AlertTriangle, Armchair, FileText, Pencil, Plus, Printer, Ticket, Trash2 } from 'lucide-react'
+import { AlertTriangle, Armchair, FileText, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
 import { applySessionRules, sessionDates, sessionOf, sessionPapers } from '../exams'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom'
 import type { DB, Exam, ExamKind } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { isPan, semesterOf } from '../registration'
+import HallTicketsModal from '../components/HallTickets'
 
 const ROOMS = ['EB-101', 'EB-102', 'EB-103', 'EB-201']
 const ROOM_SEATS = 6 // small for the demo so several rooms are used
@@ -32,7 +33,6 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
   const upcoming = exams.filter((e) => !e.resultsPublished).sort((a, b) => (a.sessionId ?? '').localeCompare(b.sessionId ?? '') || a.date.localeCompare(b.date))
   const results = studentResults(db, studentId)
   const [tab, setTab] = useState<'schedule' | 'results' | 'reval'>('schedule')
-  const [ticket, setTicket] = useState<string | null>(null) // exam session id
   const [reval, setReval] = useState<Exam | null>(null)
   const [reason, setReason] = useState('')
   const lastSem = Math.max(0, ...results.filter((x) => x.sheet.term === 'Regular' && !x.row.backlogAttempt).map((x) => x.sheet.semester))
@@ -41,7 +41,6 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
   // Upcoming exams, each made of subject papers.
   const upcomingSessions = [...new Set(upcoming.map((e) => e.sessionId))].map((sid) => db.examSessions.find((x) => x.id === sid)).filter(Boolean) as DB['examSessions']
   const allEligible = elig.length > 0 && elig.every((x) => x.eligible)
-  const anyEligible = elig.some((x) => x.eligible)
 
   const requestReval = () => {
     if (!reval) return
@@ -53,7 +52,8 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
 
   return (
     <>
-      {!readOnly && <PageHeader title="Examinations" subtitle="Schedule, hall ticket, results and re-evaluation" actions={<button className="btn" disabled={!anyEligible} title={anyEligible ? '' : 'Not eligible for any upcoming exam'} onClick={() => setTicket(upcomingSessions.find((s) => elig.some((x) => x.eligible && x.e.sessionId === s.id))?.id ?? null)}><Ticket size={14} /> Hall ticket</button>} />}
+      {!readOnly && <PageHeader title="Examinations" subtitle="Schedule, eligibility, results and re-evaluation" />}
+      {!readOnly && upcomingSessions.map((s) => <div key={s.id} className={`alert ${s.ticketsIssuedAt ? 'alert-success' : 'alert-info'}`}>{s.title}: {s.ticketsIssuedAt ? `hall ticket issued on ${fmtDate(s.ticketsIssuedAt)}. Collect it from the Registrar of Evaluation office.` : 'hall tickets are issued by the Registrar of Evaluation office before the exam.'}</div>)}
       <div className="grid grid-4">
         <Stat label="Upcoming exams" value={upcoming.length} tone="info" />
         <Stat label="Eligible" value={`${elig.filter((x) => x.eligible).length}/${elig.length}`} tone={allEligible ? 'success' : 'danger'} />
@@ -135,22 +135,6 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
           )}
         </Card>
       )}
-      {ticket && (() => { const sess = db.examSessions.find((x) => x.id === ticket); const tElig = elig.filter((x) => x.e.sessionId === ticket); return (
-        <Modal title="Hall ticket" onClose={() => setTicket(null)} footer={<button className="btn" onClick={() => window.print()}><Printer size={14} /> Print</button>}>
-          {upcomingSessions.length > 1 && <Field label="Exam"><select className="select" value={ticket} onChange={(e) => setTicket(e.target.value)}>{upcomingSessions.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}</select></Field>}
-          <div className="row gap"><div className="brand-logo">CP</div><div><strong>Campus Portal University</strong><div className="small muted">Admit card · {sess?.title}</div></div></div>
-          <table><tbody>
-            <tr><td className="muted">Name</td><td><strong>{student.name}</strong></td></tr>
-            <tr><td className="muted">Roll number</td><td>{student.rollNo}</td></tr>
-            <tr><td className="muted">Programme</td><td>{student.program} · Semester {student.semester}</td></tr>
-          </tbody></table>
-          <table><thead><tr><th>Date</th><th>Course</th><th>Time</th><th>Room / seat</th></tr></thead><tbody>
-            {tElig.filter((x) => x.eligible).map(({ e }) => { const s = e.seating?.find((x) => x.studentId === studentId); return <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{courseName(db, e.courseId)}</td><td>{e.start}</td><td>{s ? `${s.room} / ${s.seat}` : 'TBA'}</td></tr> })}
-          </tbody></table>
-          {tElig.some((x) => !x.eligible) && <div className="alert alert-warning small">Withheld: {tElig.filter((x) => !x.eligible).map((x) => `${courseName(db, x.e.courseId)} (${x.reasons.join('; ')})`).join(', ')}</div>}
-          <div className="small muted">Carry this hall ticket and your college ID card. Electronic devices are not permitted.</div>
-        </Modal>
-      ) })()}
       {reval && (
         <Modal title="Apply for re-evaluation" onClose={() => setReval(null)} footer={<><button className="btn btn-ghost" onClick={() => setReval(null)}>Cancel</button><button className="btn" disabled={!reason.trim()} onClick={requestReval}>Pay {inr(500)} &amp; submit</button></>}>
           <div>{courseName(db, reval.courseId)}: {reval.title}</div>
@@ -170,6 +154,7 @@ function ExamAdmin() {
   const user = useCurrentUser()!
   const isAdmin = can(user, 'manageExams')
   const [term, setTerm] = useState('')
+  const [tickets, setTickets] = useState<string | null>(null)
   const canMark = (e: Exam) => isAdmin || e.evaluatorId === user.id
   const mine = (e: Exam) => isAdmin || e.evaluatorId === user.id || db.courses.find((c) => c.id === e.courseId)?.facultyId === user.id
   const sheetOf = (e: Exam) => db.resultSheets.find((sh) => sh.examId === e.id)
@@ -387,6 +372,7 @@ function ExamAdmin() {
                   {(s.kind === 'End Semester' || s.kind === 'Supplementary') && <Badge tone="warning">Pass: {s.minTotalMarks ?? 40}/{(s.internalMax ?? DEFAULT_INTERNAL) + (s.externalMax ?? DEFAULT_EXTERNAL)} overall, {s.minExternalMarks ?? 14}/{s.externalMax ?? DEFAULT_EXTERNAL} external</Badge>}
                   <div className="grow" />
                   {isAdmin && !published && <button className="btn btn-outline btn-sm" onClick={() => { const papersDraft = (cls ? classCourses(db, cls) : []).filter((c) => !all.some((e) => e.courseId === c.id)); setPaperEdit({ sessionId: s.id, courseId: papersDraft[0]?.id ?? '', date: dates?.to ?? '', start: all[0]?.start ?? '09:30', end: all[0]?.end ?? '12:30', maxMarks: all[0]?.maxMarks ?? 100, evaluatorId: papersDraft[0]?.facultyId ?? facultyList[0]?.id ?? '' }) }}><Plus size={12} /> Add subject</button>}
+                  {isAdmin && !published && all.length > 0 && <button className="btn btn-outline btn-sm" onClick={() => setTickets(s.id)}><Printer size={12} /> Hall tickets{s.ticketsIssuedAt ? ' (issued)' : ''}</button>}
                   {isAdmin && !published && all.length > 0 && <button className="btn btn-outline btn-sm" onClick={() => seatSession(s.id)}><Armchair size={12} /> Seating for all subjects</button>}
                   {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setCreating({ id: s.id, title: s.title, kind: s.kind, classId: s.classId ?? '', minAttendance: s.minAttendance, requireFeesCleared: s.requireFeesCleared, grading: s.grading, internalMax: s.internalMax ?? DEFAULT_INTERNAL, externalMax: s.externalMax ?? DEFAULT_EXTERNAL, minTotalMarks: s.minTotalMarks ?? 40, minExternalMarks: s.minExternalMarks ?? 14, firstDate: '', gap: 0, papers: [] })}><Pencil size={12} /> Settings</button>}
                   {hasSheets ? <Link className="btn btn-sm" to="/results">Result sheets</Link> : isAdmin && !published && all.length > 0 && <button className="btn btn-sm" onClick={() => publishSession(s.id)}>Publish marks</button>}
@@ -507,6 +493,7 @@ function ExamAdmin() {
           )}
         </Modal>
       ) })()}
+      {tickets && <HallTicketsModal sessionId={tickets} onClose={() => setTickets(null)} />}
       {paperEdit && (() => { const s = db.examSessions.find((x) => x.id === paperEdit.sessionId)!; const cls = db.classes.find((x) => x.id === s.classId); const taken = sessionPapers(db, s.id).map((e) => e.courseId); const options = (cls ? classCourses(db, cls) : db.courses).filter((c) => paperEdit.examId ? c.id === paperEdit.courseId : !taken.includes(c.id)); return (
         <Modal title={paperEdit.examId ? `Edit ${courseName(db, paperEdit.courseId)}` : `Add subject to ${s.title}`} onClose={() => setPaperEdit(null)} footer={<><button className="btn btn-ghost" onClick={() => setPaperEdit(null)}>Cancel</button><button className="btn" onClick={savePaper}>Save</button></>}>
           <Field label="Subject"><select className="select" disabled={!!paperEdit.examId} value={paperEdit.courseId} onChange={(e) => setPaperEdit({ ...paperEdit, courseId: e.target.value, evaluatorId: db.courses.find((c) => c.id === e.target.value)?.facultyId ?? paperEdit.evaluatorId })}>{options.length === 0 && <option value="">All subjects already added</option>}{options.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></Field>

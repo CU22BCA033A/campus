@@ -6,11 +6,13 @@ import { inr } from '../lib'
 import { can } from '../access'
 import type { Alumnus } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 export default function Alumni() {
   const db = useDB()
   const user = useCurrentUser()!
   const [q, setQ] = useState('')
+  const [editA, setEditA] = useState<Alumnus | null>(null)
   const [mentorsOnly, setMentorsOnly] = useState(false)
   const [donate, setDonate] = useState<Alumnus | null>(null)
   const [amount, setAmount] = useState(5000)
@@ -57,6 +59,7 @@ export default function Alumni() {
               <div className="row gap">
                 {user.role === 'student' && a.mentor && (a.mentees.includes(user.id) ? <Badge tone="accent">Mentorship requested</Badge> : <button className="btn btn-outline btn-sm" onClick={() => requestMentor(a)}>Request mentorship</button>)}
                 {can(user, 'manageAlumni') && <button className="btn btn-outline btn-sm" onClick={() => setDonate(a)}>Record donation</button>}
+                {can(user, 'manageAlumni') && <RowActions label={a.name} onEdit={() => setEditA(a)} onDelete={() => deleteRecord('alumni', a.id, a.name, user.id)} />}
               </div>
             </div>
           </Card>
@@ -81,6 +84,7 @@ export default function Alumni() {
           <label className="row gap"><input type="checkbox" checked={draft.mentor} onChange={(e) => setDraft({ ...draft, mentor: e.target.checked })} /> Willing to mentor students</label>
         </Modal>
       )}
+      {editA && <RecordEditor title={`Edit ${editA.name}`} collection="alumni" record={editA} actorId={user.id} onClose={() => setEditA(null)} fields={[{ key: 'name', label: 'Name', required: true }, { key: 'batch', label: 'Batch', type: 'number' }, { key: 'program', label: 'Programme' }, { key: 'company', label: 'Company' }, { key: 'role', label: 'Role' }, { key: 'city', label: 'City' }, { key: 'email', label: 'Email' }, { key: 'donations', label: 'Total donations (₹)', type: 'number' }, { key: 'mentor', label: 'Mentor', type: 'checkbox' }]} />}
     </>
   )
 }

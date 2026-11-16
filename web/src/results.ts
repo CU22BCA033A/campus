@@ -5,6 +5,7 @@
 import type { DB, InternalComponent, ResultSheet, User } from './data/types'
 import { gradeFor, registerSheetInternal } from './lib'
 import { semesterOf } from './registration'
+import { assignmentMark, quizMark, quizMax } from './assess'
 
 /** General ratio: internal 60, external 40 (the Registrar of Evaluation can change it per exam). */
 export const DEFAULT_INTERNAL = 60
@@ -27,23 +28,24 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 /** Label and maximum marks of an internal component. */
 export function componentInfo(db: DB, c: InternalComponent) {
   if (c.kind === 'assignment') { const a = db.assignments.find((x) => x.id === c.id); return { label: a?.title ?? 'Assignment', short: 'Asg', max: a?.maxMarks ?? 0 } }
-  if (c.kind === 'quiz') { const q = db.quizzes.find((x) => x.id === c.id); return { label: q?.title ?? 'Quiz', short: 'Quiz', max: q?.questions.length ?? 0 } }
+  if (c.kind === 'quiz') { const q = db.quizzes.find((x) => x.id === c.id); return { label: q?.title ?? 'Quiz', short: 'Quiz', max: q ? quizMax(q.questions) : 0 } }
   const e = db.exams.find((x) => x.id === c.id); return { label: e?.title ?? 'Test', short: 'Test', max: e?.maxMarks ?? 0 }
 }
 
 /** Everything that could count towards a course's internals. */
 export function availableComponents(db: DB, courseId: string, externalExamId?: string): InternalComponent[] {
   return [
-    ...db.assignments.filter((a) => a.courseId === courseId).map((a) => ({ kind: 'assignment' as const, id: a.id })),
-    ...db.quizzes.filter((q) => q.courseId === courseId).map((q) => ({ kind: 'quiz' as const, id: q.id })),
+    ...db.assignments.filter((a) => a.courseId === courseId && !a.makeupOf).map((a) => ({ kind: 'assignment' as const, id: a.id })),
+    ...db.quizzes.filter((q) => q.courseId === courseId && !q.makeupOf).map((q) => ({ kind: 'quiz' as const, id: q.id })),
     ...db.exams.filter((e) => e.courseId === courseId && e.id !== externalExamId && !/end sem|supplementary/i.test(e.title)).map((e) => ({ kind: 'exam' as const, id: e.id })),
   ]
 }
 
 /** A student's raw mark on a component (before any override). */
 function rawComponent(db: DB, c: InternalComponent, studentId: string): number | undefined {
-  if (c.kind === 'assignment') return db.submissions.find((s) => s.assignmentId === c.id && s.studentId === studentId)?.marks
-  if (c.kind === 'quiz') return db.attempts.find((a) => a.quizId === c.id && a.studentId === studentId)?.score
+  // Make-up tests / assignments count for the original (scaled to its maximum).
+  if (c.kind === 'assignment') return assignmentMark(db, c.id, studentId)
+  if (c.kind === 'quiz') return quizMark(db, c.id, studentId)
   return db.results.find((r) => r.examId === c.id && r.studentId === studentId)?.marks
 }
 

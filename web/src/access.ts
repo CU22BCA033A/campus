@@ -20,13 +20,15 @@ export const OFFICES: Record<Office, { label: string; description: string }> = {
   library: { label: 'Library', description: 'Catalogue, issue and return, reservations and fines' },
   placement: { label: 'Placement Cell', description: 'Recruiter drives, applications, interviews and alumni' },
   studentAffairs: { label: 'Office of Student Affairs', description: 'Clubs and chapters, campus events, polls and student grievances' },
+  transport: { label: 'Transport Department', description: 'Bus routes, vehicles, drivers, stops, student passes and transport fees' },
+  facilities: { label: 'Estate & Facilities', description: 'Auditoriums, halls and labs: bookings, approvals and maintenance requests' },
 }
 
 export const persona = (u: User): Persona => (u.role === 'admin' ? (u.office ?? 'super') : u.role)
 export const personaLabel = (u: User) => (u.role === 'admin' ? OFFICES[u.office ?? 'super'].label : u.role[0].toUpperCase() + u.role.slice(1))
 
-const ALL: Persona[] = ['student', 'faculty', 'parent', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs']
-const STAFF: Persona[] = ['faculty', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs']
+const ALL: Persona[] = ['student', 'faculty', 'parent', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs', 'transport', 'facilities']
+const STAFF: Persona[] = ['faculty', 'super', 'registrar', 'admissions', 'exam', 'finance', 'hostel', 'hr', 'library', 'placement', 'studentAffairs', 'transport', 'facilities']
 const STUDENT_RECORDS: Persona[] = ['registrar', 'admissions', 'exam', 'super']
 const LEARNING: Persona[] = ['student', 'faculty', 'super']
 
@@ -58,8 +60,8 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/fees': ['student', 'finance', 'super'],
   '/hostel': ['student', 'hostel', 'super'],
   '/gate-pass': ['student', 'faculty', 'hostel', 'super'],
-  '/transport': ['student', 'faculty', 'parent', 'registrar', 'super'],
-  '/venues': ['faculty', 'registrar', 'super'],
+  '/transport': ['student', 'faculty', 'parent', 'transport', 'super'],
+  '/venues': ['student', ...STAFF], // anyone can request a venue; Estate & Facilities and each venue's manager approve
   '/hr': STAFF, // everyone on staff applies for leave and sees payslips; approvals/payroll are capabilities
   '/procurement': ['faculty', 'finance', 'registrar', 'super'],
   '/admissions': ['admissions', 'registrar', 'super'],
@@ -101,8 +103,12 @@ const CAPS = {
   postNotices: STAFF,
   createEvents: STAFF,
   createPolls: ['faculty', 'registrar', 'studentAffairs', 'super'],
-  bookVenues: ['faculty', 'registrar', 'super'],
-  manageAllBookings: ['registrar', 'super'],
+  bookVenues: ['student', ...STAFF],
+  manageAllBookings: ['facilities', 'super'],
+  manageVenues: ['facilities', 'super'], // add venues, assign their managers
+  manageTransport: ['transport', 'super'],
+  manageServices: ['studentAffairs', 'super'], // assign counsellors / handlers to any service
+  routeTickets: ['super'], // default handler per Help Center category
   moderateNotices: ['registrar', 'super'],
   manageStudents: ['registrar', 'admissions', 'super'], // create, deactivate, reset passwords
   manageStaff: ['hr', 'super'],
@@ -116,10 +122,10 @@ export const can = (u: User, cap: Capability) => (CAPS[cap] as Persona[]).includ
 export const TICKET_OFFICE: Record<DB['tickets'][number]['category'], Office> = {
   Grievance: 'studentAffairs',
   'Bonafide Certificate': 'registrar',
-  'Facility Booking': 'registrar',
+  'Facility Booking': 'facilities',
   'No-Dues Certificate': 'finance',
   'IT Support': 'super',
-  Maintenance: 'hostel',
+  Maintenance: 'facilities',
 }
 
 /** Staff accounts for an office (plus system administrators), used to route notifications. */

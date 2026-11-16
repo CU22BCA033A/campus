@@ -3,11 +3,13 @@ import { LifeBuoy, Plus, Printer } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
-import { OFFICES, persona, TICKET_OFFICE, officeUsers } from '../access'
+import { can, OFFICES, persona, personaLabel, TICKET_OFFICE, officeUsers } from '../access'
 import type { DB, Ticket } from '../data/types'
 import AppointmentsPanel from './Appointments'
 import { matches } from '../lib'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { memberDues } from '../library'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 const CATS: { id: Ticket['category']; sla: number }[] = [
   { id: 'Grievance', sla: 72 }, { id: 'IT Support', sla: 24 }, { id: 'Maintenance', sla: 48 },
@@ -19,7 +21,7 @@ const isOverdue = (t: Ticket) => !['RESOLVED', 'CLOSED'].includes(t.status) && D
 export function noDuesCheck(db: DB, userId: string) {
   const items = [
     { dept: 'Accounts', ok: studentDues(db, userId) === 0, note: studentDues(db, userId) ? `${inr(studentDues(db, userId))} outstanding` : 'Clear' },
-    { dept: 'Library', ok: !db.loans.some((l) => l.userId === userId && !l.returnedAt), note: db.loans.filter((l) => l.userId === userId && !l.returnedAt).length ? `${db.loans.filter((l) => l.userId === userId && !l.returnedAt).length} book(s) not returned` : 'Clear' },
+    { dept: 'Library', ok: !db.loans.some((l) => l.userId === userId && !l.returnedAt) && memberDues(db, userId) === 0, note: [db.loans.filter((l) => l.userId === userId && !l.returnedAt).length ? `${db.loans.filter((l) => l.userId === userId && !l.returnedAt).length} book(s) not returned` : '', memberDues(db, userId) ? `fine ${inr(memberDues(db, userId))} unpaid` : ''].filter(Boolean).join(', ') || 'Clear' },
     { dept: 'Hostel', ok: !db.rooms.some((r) => r.occupants.includes(userId)), note: db.rooms.some((r) => r.occupants.includes(userId)) ? 'Room not vacated' : 'Clear' },
   ]
   return { ok: items.every((i) => i.ok), items }
@@ -29,7 +31,11 @@ export default function HelpCenter() {
   const db = useDB()
   const user = useCurrentUser()!
   const isStaff = user.role === 'admin'
-  const handles = (t: Ticket) => isStaff && (persona(user) === 'super' || TICKET_OFFICE[t.category] === persona(user))
+  // The handling office, the person the ticket is assigned to, and the system administrator can act on a ticket.
+  const handles = (t: Ticket) => (isStaff && (persona(user) === 'super' || TICKET_OFFICE[t.category] === persona(user))) || t.assignedTo === user.id
+  const [routing, setRouting] = useState(false)
+  const [editT, setEditT] = useState<Ticket | null>(null)
+  const staffList = db.users.filter((u) => u.role !== 'student' && u.role !== 'parent' && u.status === 'ACTIVE')
   const [area, setArea] = useState<'services' | 'tickets'>(user.role === 'parent' ? 'tickets' : 'services')
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<'open' | 'resolved'>('open')
@@ -52,14 +58,22 @@ export default function HelpCenter() {
   const create = () => {
     if (!draft.subject.trim()) return
     const number = `HC-${1000 + db.tickets.length + 1}`
-    update((d) => { d.tickets.push({ id: uid('tk'), number, ...draft, raisedBy: user.id, status: 'OPEN', createdAt: Date.now(), slaHours: CATS.find((c) => c.id === draft.category)!.sla, comments: [] }) })
-    notify(officeUsers(db, TICKET_OFFICE[draft.category]), `New ticket ${number}: ${draft.subject}`, '/help')
+    const assignee = db.ticketRouting?.[draft.category]
+    update((d) => { d.tickets.push({ id: uid('tk'), number, ...draft, raisedBy: user.id, status: 'OPEN', createdAt: Date.now(), slaHours: CATS.find((c) => c.id === draft.category)!.sla, comments: [], assignedTo: assignee }) })
+    // The category's assigned person gets it to act on; the office is kept informed.
+    if (assignee) notify([assignee], `Ticket ${number} assigned to you (${draft.category}, ${draft.priority}): ${draft.subject}`, '/help')
+    notify(officeUsers(db, TICKET_OFFICE[draft.category]).filter((x) => x !== assignee), `New ticket ${number}: ${draft.subject}`, '/help')
     setCreating(false); setDraft({ category: 'IT Support', subject: '', description: '', priority: 'Medium', anonymous: false })
   }
   const setStatus = (tk: Ticket, status: Ticket['status']) => {
     update((d) => { const x = d.tickets.find((y) => y.id === tk.id)!; x.status = status; if (!x.assignedTo) x.assignedTo = user.id })
     notify([tk.raisedBy], `Ticket ${tk.number} is now ${status.replace('_', ' ').toLowerCase()}`, '/help')
     audit(user.id, 'TICKET_STATUS', `${tk.number} → ${status}`)
+  }
+  const reassign = (tk: Ticket, to: string) => {
+    update((d) => { d.tickets.find((y) => y.id === tk.id)!.assignedTo = to || undefined })
+    if (to) notify([to], `Ticket ${tk.number} assigned to you: ${tk.subject}`, '/help')
+    audit(user.id, 'TICKET_ASSIGN', `${tk.number} → ${to ? userName(db, to) : 'unassigned'}`)
   }
   const addComment = () => {
     if (!t || !comment.trim()) return
@@ -72,7 +86,19 @@ export default function HelpCenter() {
     <>
       <PageHeader title="Help Center" subtitle="Book counselling, office and department appointments, or raise a request or grievance"
         search={area === 'tickets' ? { value: q, onChange: setQ, placeholder: 'Search tickets, people…' } : undefined}
-        actions={area === 'tickets' && persona(user) !== 'super' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>} />
+        actions={<>{area === 'tickets' && can(user, 'routeTickets') && <button className="btn btn-outline" onClick={() => setRouting(true)}>Assign handlers</button>}{area === 'tickets' && persona(user) !== 'super' && <button className="btn" onClick={() => setCreating(true)}><Plus size={14} /> Raise a request</button>}</>} />
+      {routing && (
+        <Modal title="Who handles each request type" onClose={() => setRouting(false)}>
+          <p className="small muted">New tickets of a category go straight to this person (and the office is informed). Anyone handling a ticket can reassign it.</p>
+          {CATS.map((c) => (
+            <Field key={c.id} label={`${c.id} · ${OFFICES[TICKET_OFFICE[c.id]].label}`}>
+              <select className="select" value={db.ticketRouting?.[c.id] ?? ''} onChange={(e) => { const v = e.target.value; update((d) => { d.ticketRouting = { ...d.ticketRouting, [c.id]: v || undefined } }); if (v) notify([v], `New ${c.id} tickets will be assigned to you.`, '/help'); audit(user.id, 'TICKET_ROUTING', `${c.id} → ${v ? userName(db, v) : 'office'}`) }}>
+                <option value="">The office (no one specific)</option>{staffList.map((u) => <option key={u.id} value={u.id}>{u.name} · {personaLabel(u)}</option>)}
+              </select>
+            </Field>
+          ))}
+        </Modal>
+      )}
       {user.role !== 'parent' && (
         <div className="row gap">
           <button className={`chip ${area === 'services' ? 'active' : ''}`} onClick={() => setArea('services')}>Services &amp; appointments</button>
@@ -99,7 +125,7 @@ export default function HelpCenter() {
                 <td><Badge tone={x.priority === 'High' ? 'danger' : x.priority === 'Medium' ? 'warning' : 'neutral'}>{x.priority}</Badge></td>
                 <td>{isOverdue(x) ? <Badge tone="danger">Breached</Badge> : <span className="small muted">{x.slaHours}h · {timeAgo(x.createdAt)}</span>}</td>
                 <td><Badge tone={x.status === 'RESOLVED' || x.status === 'CLOSED' ? 'success' : x.status === 'IN_PROGRESS' ? 'info' : 'warning'}>{x.status.replace('_', ' ')}</Badge></td>
-                <td><button className="btn btn-outline btn-sm" onClick={() => setView(x.id)}>Open</button></td>
+                <td className="row gap"><button className="btn btn-outline btn-sm" onClick={() => setView(x.id)}>Open</button>{handles(x) && isStaff && <RowActions label={x.number} onEdit={() => setEditT(x)} onDelete={persona(user) === 'super' ? () => deleteRecord('tickets', x.id, `ticket ${x.number}`, user.id) : undefined} />}</td>
               </tr>
             ))}</tbody>
           </table></div>
@@ -117,6 +143,11 @@ export default function HelpCenter() {
           <div className="row gap wrap"><Badge tone="brand">{t.category}</Badge><Badge>{t.status}</Badge>{isOverdue(t) && <Badge tone="danger">SLA breached</Badge>}{t.anonymous && <Badge tone="accent">Anonymous</Badge>}</div>
           <p>{t.description}</p>
           <div className="small muted">Handled by {OFFICES[TICKET_OFFICE[t.category]].label} · raised {fmtDateTime(t.createdAt)}{t.assignedTo ? ` · assigned to ${userName(db, t.assignedTo)}` : ''}</div>
+          {handles(t) && isStaff && (
+            <Field label="Assigned to" hint="This person gets the ticket to act on">
+              <select className="select" value={t.assignedTo ?? ''} onChange={(e) => reassign(t, e.target.value)}><option value="">Unassigned (office)</option>{staffList.map((u) => <option key={u.id} value={u.id}>{u.name} · {personaLabel(u)}</option>)}</select>
+            </Field>
+          )}
           {t.category === 'No-Dues Certificate' && (
             <div className="stack" style={{ gap: 4 }}>
               <h3>Department clearance (automatic)</h3>
@@ -152,6 +183,7 @@ export default function HelpCenter() {
           </div>
         </Modal>
       ) })()}
+      {editT && <RecordEditor title={`Edit ${editT.number}`} collection="tickets" record={editT} actorId={user.id} onClose={() => setEditT(null)} fields={[{ key: 'subject', label: 'Subject', required: true }, { key: 'category', label: 'Category', type: 'select', options: CATS.map((c) => ({ value: c.id, label: c.id })) }, { key: 'priority', label: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'].map((x) => ({ value: x, label: x })) }, { key: 'status', label: 'Status', type: 'select', options: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((x) => ({ value: x, label: x.replace('_', ' ').toLowerCase() })) }, { key: 'slaHours', label: 'SLA (hours)', type: 'number' }, { key: 'description', label: 'Description', type: 'textarea' }]} />}
     </>
   )
 }

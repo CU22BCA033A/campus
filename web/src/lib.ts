@@ -1,4 +1,5 @@
 import type { DB, ResultSheet, User } from './data/types'
+import { assignmentMark, quizMark, quizMax } from './assess'
 
 /** Case-insensitive "does any field contain the query" (all words must match somewhere). */
 export function matches(q: string, ...fields: (string | number | undefined | null)[]) {
@@ -81,14 +82,15 @@ export function gradeFor(pct: number) {
 /** Internal marks: assignments (60%) + quizzes (40%), as a 0–100 percentage, or null if nothing graded. */
 export function internalPct(db: DB, studentId: string, courseId: string): number | null {
   let got = 0, max = 0
-  for (const a of db.assignments.filter((x) => x.courseId === courseId)) {
-    const s = db.submissions.find((x) => x.assignmentId === a.id && x.studentId === studentId)
-    if (s?.marks !== undefined) { got += s.marks; max += a.maxMarks }
+  // Make-ups count for the original assessment.
+  for (const a of db.assignments.filter((x) => x.courseId === courseId && !x.makeupOf)) {
+    const m = assignmentMark(db, a.id, studentId)
+    if (m !== undefined) { got += m; max += a.maxMarks }
   }
   let qgot = 0, qmax = 0
-  for (const q of db.quizzes.filter((x) => x.courseId === courseId)) {
-    const at = db.attempts.find((x) => x.quizId === q.id && x.studentId === studentId)
-    if (at) { qgot += at.score; qmax += q.questions.length }
+  for (const q of db.quizzes.filter((x) => x.courseId === courseId && !x.makeupOf)) {
+    const m = quizMark(db, q.id, studentId)
+    if (m !== undefined) { qgot += m; qmax += quizMax(q.questions) }
   }
   const aPct = max ? got / max : null
   const qPct = qmax ? qgot / qmax : null

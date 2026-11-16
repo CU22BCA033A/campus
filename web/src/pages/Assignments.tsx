@@ -1,19 +1,22 @@
-import { useState } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Download, Eye, FileText, Link2, ListChecks, Paperclip, Pencil, Plus, Trash2, Type, Upload, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { CheckCircle2, Copy, ChevronLeft, ChevronRight, ClipboardList, Download, Eye, FileText, Link2, ListChecks, Paperclip, Pencil, Plus, RotateCcw, TextCursorInput, Trash2, Type, Upload, XCircle } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHeader, Tabs } from '../components/ui'
 import { courseName, coursesFor, fmtDateTime, matches, timeAgo, userName } from '../lib'
+import { blankMatches, visibleTo } from '../assess'
+import { ProctorIntro, useProctor } from '../components/Proctor'
 import { acceptAttr, answerOf, autoMark, FILE_KINDS, fileAllowed, formatsLabel, isAnswered, isAuto, PART_LABEL, partsOf, pendingManual, totalOf } from '../assignments'
 import type { Assignment, AssignmentPart, FileKind, PartAnswer, PartType, Submission } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { classLabel } from '../classes'
+import { deleteRecord } from '../components/RecordEditor'
 
 const MAX_INLINE_BYTES = 2 * 1024 * 1024 // files up to 2 MB are kept so the teacher can open them in the demo
 const MAX_FILE_BYTES = 20 * 1024 * 1024
-const PART_ICON: Record<PartType, React.ElementType> = { text: Type, link: Link2, file: FileText, mcq: CheckCircle2, msq: ListChecks }
+const PART_ICON: Record<PartType, React.ElementType> = { text: Type, link: Link2, file: FileText, mcq: CheckCircle2, msq: ListChecks, blank: TextCursorInput }
 
 const readAsDataUrl = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f) })
-const SHORT: Record<PartType, string> = { text: 'Written', link: 'Link', file: 'File', mcq: 'MCQ', msq: 'MCQ' }
+const SHORT: Record<PartType, string> = { text: 'Written', link: 'Link', file: 'File', mcq: 'MCQ', msq: 'MCQ', blank: 'Blank' }
 const formatSummary = (a: Assignment) => [...new Set(partsOf(a).filter((p) => p.marks > 0 || p.required).map((p) => (p.type === 'file' ? `${formatsLabel(p)} upload` : SHORT[p.type])))].join(' · ')
 
 export default function Assignments() {
@@ -32,6 +35,10 @@ function FileLink({ a }: { a: PartAnswer }) {
 
 /** One part's answer, read-only. `reveal` shows correct MCQ options. */
 function AnswerView({ p, a, reveal }: { p: AssignmentPart; a?: PartAnswer; reveal: boolean }) {
+  if (p.type === 'blank') {
+    const ok = blankMatches(p.accepted, a?.text)
+    return <div className="stack" style={{ gap: 4 }}><div className={`option ${reveal ? (ok ? 'correct' : 'wrong') : ''}`} style={{ cursor: 'default' }}>{a?.text?.trim() || <span className="muted">Not answered</span>}</div>{reveal && !ok && <span className="small muted">Accepted: {(p.accepted ?? []).join(' / ')}</span>}</div>
+  }
   if (isAuto(p)) {
     return (
       <div className="stack" style={{ gap: 6 }}>
@@ -81,6 +88,8 @@ function StudentAssignments() {
   const [files, setFiles] = useState<Record<string, File | null>>({})
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [intro, setIntro] = useState<Assignment | null>(null) // proctored: explain the rules first
+  const [flash, setFlash] = useState<string | null>(null)
 
   const sf = useFilters(['course', 'due', 'format'] as const)
   const sdefs = [
@@ -90,7 +99,7 @@ function StudentAssignments() {
   ]
   const dueOk = (a: Assignment) => { const v = sf.values.due, now = Date.now(); return !v || (v === 'overdue' ? a.dueAt < now : v === 'week' ? a.dueAt >= now && a.dueAt < now + 7 * 86_400_000 : a.dueAt >= now + 7 * 86_400_000) }
   const formatOk = (a: Assignment) => { const v = sf.values.format; return !v || partsOf(a).some((p) => (v === 'mcq' ? isAuto(p) : p.type === v)) }
-  const all = db.assignments.filter((a) => sf.ok('course', a.courseId) && dueOk(a) && formatOk(a)).filter((a) => courses.some((c) => c.id === a.courseId) && matches(q, a.title, a.description, courseName(db, a.courseId))).sort((a, b) => a.dueAt - b.dueAt)
+  const all = db.assignments.filter((a) => sf.ok('course', a.courseId) && dueOk(a) && formatOk(a)).filter((a) => visibleTo(a, user.id) && courses.some((c) => c.id === a.courseId) && matches(q, a.title, a.description, courseName(db, a.courseId))).sort((a, b) => a.dueAt - b.dueAt)
   const subOf = (a: Assignment) => db.submissions.find((s) => s.assignmentId === a.id && s.studentId === user.id)
   const lists = {
     pending: all.filter((a) => !subOf(a)),
@@ -105,11 +114,11 @@ function StudentAssignments() {
   }
   const setAns = (id: string, patch: Partial<PartAnswer>) => setAnswers((x) => ({ ...x, [id]: { ...x[id], partId: id, ...patch } }))
 
-  const submit = async () => {
+  const submit = async (forced?: { violations: number }) => {
     if (!open) return
     const parts = partsOf(open)
-    // Validate before saving anything.
-    for (const [i, p] of parts.entries()) {
+    // Validate before saving anything (a proctoring close submits whatever is answered).
+    if (!forced) for (const [i, p] of parts.entries()) {
       const f = files[p.id]
       if (f && !fileAllowed(p, f.name)) return setErr(`Part ${i + 1} accepts ${formatsLabel(p)} only.`)
       if (f && f.size > MAX_FILE_BYTES) return setErr(`Part ${i + 1}: files must be 20 MB or smaller.`)
@@ -117,11 +126,11 @@ function StudentAssignments() {
       const a = f ? { ...answers[p.id], fileName: f.name } : answers[p.id]
       if (p.required && !isAnswered(p, a)) return setErr(`Part ${i + 1} is required: ${p.prompt}`)
     }
-    if (!parts.some((p) => isAnswered(p, files[p.id] ? { partId: p.id, fileName: files[p.id]!.name } : answers[p.id]))) return setErr('Answer at least one part.')
+    if (!forced && !parts.some((p) => isAnswered(p, files[p.id] ? { partId: p.id, fileName: files[p.id]!.name } : answers[p.id]))) return setErr('Answer at least one part.')
     setBusy(true)
     const final: PartAnswer[] = []
     for (const p of parts) {
-      const f = files[p.id]
+      const f = forced ? undefined : files[p.id]
       const base = answers[p.id] ?? { partId: p.id }
       final.push(f ? { ...base, fileName: f.name, fileSize: f.size, fileData: f.size <= MAX_INLINE_BYTES ? await readAsDataUrl(f) : undefined } : base)
     }
@@ -129,24 +138,39 @@ function StudentAssignments() {
     for (const p of parts) { const m = autoMark(p, final.find((x) => x.partId === p.id)); if (m !== undefined) partMarks[p.id] = m }
     const draft: Submission = { id: '', assignmentId: open.id, studentId: user.id, text: '', answers: final, partMarks, submittedAt: Date.now() }
     const fullyAuto = pendingManual(open, draft).length === 0
+    const proctorInfo = open.proctored ? { violations: forced?.violations ?? proctor.violations, terminated: !!forced } : {}
     const existing = subOf(open)
     update((d) => {
       const rec = { answers: final, partMarks, submittedAt: Date.now(), text: final.find((x) => x.partId === 'legacy-text')?.text ?? '', fileName: final.find((x) => x.partId === 'legacy-file')?.fileName, fileData: final.find((x) => x.partId === 'legacy-file')?.fileData,
-        ...(fullyAuto ? { marks: totalOf(open, partMarks), gradedBy: 'auto', gradedAt: Date.now() } : {}) }
+        ...proctorInfo, ...(fullyAuto ? { marks: totalOf(open, partMarks), gradedBy: 'auto', gradedAt: Date.now() } : {}) }
       if (existing) Object.assign(d.submissions.find((x) => x.id === existing.id)!, rec)
       else d.submissions.push({ id: uid('sub'), assignmentId: open.id, studentId: user.id, ...rec })
     })
     const fac = db.courses.find((c) => c.id === open.courseId)!.facultyId
-    notify([fac], `${user.name} ${existing ? 'resubmitted' : 'submitted'} "${open.title}"${fullyAuto ? ' (auto-marked)' : ''}`, '/assignments')
+    notify([fac], forced ? `Malpractice alert: ${user.name} (${user.rollNo}) left the screen ${forced.violations} times during "${open.title}". The attempt was closed and submitted as it was. You can allow a re-attempt from the submissions list.` : `${user.name} ${existing ? 'resubmitted' : 'submitted'} "${open.title}"${fullyAuto ? ' (auto-marked)' : ''}`, '/assignments')
+    proctor.stop()
     setBusy(false); setOpen(null)
-    if (fullyAuto) { setTab('graded'); notify([user.id], `"${open.title}" auto-marked: ${totalOf(open, partMarks)}/${open.maxMarks}`, '/assignments') }
+    // Marks for auto-marked parts are shown straight away.
+    const autoParts = parts.filter(isAuto)
+    const autoGot = autoParts.reduce((t, p) => t + (partMarks[p.id] ?? 0), 0), autoMax = autoParts.reduce((t, p) => t + p.marks, 0)
+    if (forced) setFlash(`“${open.title}” was closed because you left the screen ${forced.violations} times. Your teacher has been informed.${autoMax ? ` Auto-marked: ${autoGot}/${autoMax}.` : ''}`)
+    else if (fullyAuto) { setTab('graded'); setFlash(`“${open.title}” submitted and marked: ${totalOf(open, partMarks)}/${open.maxMarks}.`); notify([user.id], `"${open.title}" auto-marked: ${totalOf(open, partMarks)}/${open.maxMarks}`, '/assignments') }
+    else setFlash(`“${open.title}” submitted.${autoMax ? ` Auto-marked parts: ${autoGot}/${autoMax}; the rest is marked by your teacher.` : ''}`)
   }
+
+  const submitRef = useRef(submit)
+  useEffect(() => { submitRef.current = submit })
+  const proctor = useProctor(!!open?.proctored && !busy, useCallback((v: number) => { void submitRef.current({ violations: v }) }, []))
+
+  if (intro) return <ProctorIntro title={intro.title} onBegin={() => { const a = intro; setIntro(null); start(a) }} onCancel={() => setIntro(null)} />
 
   return (
     <>
+      {proctor.overlay}
       <PageHeader title="Assignments" subtitle="Answer in the format each assignment asks for: written, link, file upload or MCQ" search={{ value: q, onChange: setQ, placeholder: 'Search assignments or courses…' }} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'pending', label: 'Pending', count: lists.pending.length }, { id: 'submitted', label: 'Submitted', count: lists.submitted.length }, { id: 'graded', label: 'Marked', count: lists.graded.length }]} />
       <FilterBar defs={sdefs} f={sf} />
+      {flash && <div className="alert alert-info row between"><span>{flash}</span><button className="btn btn-ghost btn-sm" onClick={() => setFlash(null)}>Dismiss</button></div>}
       <div className="stack">
         {lists[tab].length === 0 && <Card><Empty icon={<ClipboardList />} text="Nothing here." /></Card>}
         {lists[tab].map((a) => {
@@ -160,7 +184,7 @@ function StudentAssignments() {
                   <p className="muted small" style={{ marginTop: 4 }}>{a.description}</p>
                   <div className="small row gap wrap" style={{ marginTop: 8 }}>Due <strong>{fmtDateTime(a.dueAt)}</strong> · {a.maxMarks} marks · {partsOf(a).length > 1 && a.parts ? `${partsOf(a).length} parts · ` : ''}<span className="muted">{formatSummary(a)}</span></div>
                 </div>
-                {!s && <div className="stack" style={{ alignItems: 'flex-end', gap: 6 }}><Badge tone={late ? 'danger' : 'warning'}>{late ? 'Overdue' : `Due ${timeAgo(a.dueAt)}`}</Badge><button className="btn" onClick={() => start(a)}><Upload size={14} /> Answer</button></div>}
+                {!s && <div className="stack" style={{ alignItems: 'flex-end', gap: 6 }}><Badge tone={late ? 'danger' : 'warning'}>{late ? 'Overdue' : `Due ${timeAgo(a.dueAt)}`}</Badge><button className="btn" onClick={() => (a.proctored ? setIntro(a) : start(a))}><Upload size={14} /> Answer{a.proctored ? ' (proctored)' : ''}</button></div>}
                 {s && s.marks === undefined && <div className="stack" style={{ alignItems: 'flex-end', gap: 6 }}><Badge tone="info">Submitted {timeAgo(s.submittedAt)}</Badge><div className="row gap"><button className="btn btn-ghost btn-sm" onClick={() => setViewing({ a, s })}><Eye size={12} /> View</button><button className="btn btn-outline btn-sm" onClick={() => start(a)}>Edit &amp; resubmit</button></div></div>}
                 {s && s.marks !== undefined && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 22, fontWeight: 700 }}>{s.marks}/{a.maxMarks}</div><Badge tone="success">{s.gradedBy === 'auto' ? 'Auto-marked' : 'Marked'}</Badge> <button className="btn btn-ghost btn-sm" onClick={() => setViewing({ a, s })}><Eye size={12} /> Details</button></div>}
               </div>
@@ -171,7 +195,8 @@ function StudentAssignments() {
       </div>
 
       {open && (
-        <Modal title={`${subOf(open) ? 'Edit answer' : 'Answer'}: ${open.title}`} onClose={() => !busy && setOpen(null)} footer={<><button className="btn btn-ghost" disabled={busy} onClick={() => setOpen(null)}>Cancel</button><button className="btn" disabled={busy} onClick={submit}>{busy ? 'Uploading…' : 'Submit'}</button></>}>
+        <Modal title={`${subOf(open) ? 'Edit answer' : 'Answer'}: ${open.title}`} onClose={() => !busy && setOpen(null)} footer={<><button className="btn btn-ghost" disabled={busy} onClick={() => setOpen(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => void submit()}>{busy ? 'Uploading…' : 'Submit'}</button></>}>
+          {proctor.banner}
           {open.dueAt < Date.now() && <div className="alert alert-warning">This assignment is past its due date and will be marked late.</div>}
           {open.description && <p className="small muted">{open.description}</p>}
           {err && <div className="alert alert-danger" role="alert">{err}</div>}
@@ -184,10 +209,11 @@ function StudentAssignments() {
                 {p.type === 'link' && <input className="input" type="url" value={a?.text ?? ''} onChange={(e) => setAns(p.id, { text: e.target.value })} placeholder="https://github.com/you/project" />}
                 {p.type === 'file' && (
                   <Field label="" hint={`${formatsLabel(p)} · up to 20 MB${a?.fileName && !files[p.id] ? ` · current: ${a.fileName}` : ''}`}>
-                    <input type="file" accept={acceptAttr(p)} onChange={(e) => { setFiles({ ...files, [p.id]: e.target.files?.[0] ?? null }); setErr('') }} />
+                    <input type="file" accept={acceptAttr(p)} onClick={() => proctor.pause(60_000)} onChange={(e) => { setFiles({ ...files, [p.id]: e.target.files?.[0] ?? null }); setErr('') }} />
                   </Field>
                 )}
-                {isAuto(p) && (
+                {p.type === 'blank' && <input className="input" aria-label={`Part ${i + 1} answer`} value={a?.text ?? ''} onChange={(e) => setAns(p.id, { text: e.target.value })} placeholder="Fill in the blank" />}
+                {(p.type === 'mcq' || p.type === 'msq') && (
                   <div className="stack" style={{ gap: 6 }}>
                     {p.options!.map((o, k) => {
                       const sel = !!a?.choices?.includes(k)
@@ -205,7 +231,7 @@ function StudentAssignments() {
               </div>
             )
           })}
-          <div className="small muted">You can edit and resubmit until your teacher marks it. MCQ parts are marked automatically.</div>
+          <div className="small muted">You can edit and resubmit until your teacher marks it. MCQ and fill-in-the-blank parts are marked automatically as soon as you submit.</div>
         </Modal>
       )}
 
@@ -214,7 +240,7 @@ function StudentAssignments() {
           <div className="small muted">Submitted {fmtDateTime(viewing.s.submittedAt)}{viewing.s.marks !== undefined && <> · <strong>{viewing.s.marks}/{viewing.a.maxMarks}</strong></>}</div>
           {partsOf(viewing.a).map((p, i) => {
             const pm = viewing.s.partMarks?.[p.id]
-            const marked = viewing.s.marks !== undefined
+            const marked = viewing.s.marks !== undefined || (isAuto(p) && pm !== undefined)
             return (
               <div key={p.id} className="stack" style={{ gap: 6 }}>
                 <PartHeader p={p} i={i} right={<Badge tone={marked && pm !== undefined ? (pm === p.marks ? 'success' : pm === 0 ? 'danger' : 'warning') : 'neutral'}>{marked && pm !== undefined ? `${pm}/${p.marks}` : `${p.marks} marks`}</Badge>} />
@@ -235,6 +261,7 @@ type RowStatus = 'GRADED' | 'SUBMITTED' | 'LATE' | 'MISSING'
 const newPart = (type: PartType): AssignmentPart => ({
   id: uid('p'), type, prompt: '', marks: type === 'mcq' || type === 'msq' ? 2 : 10, required: true,
   ...(type === 'mcq' || type === 'msq' ? { options: ['', '', '', ''], correct: [] } : {}),
+  ...(type === 'blank' ? { marks: 2, accepted: [] } : {}),
   ...(type === 'file' ? { accept: ['pdf', 'doc'] as FileKind[] } : {}),
 })
 
@@ -263,7 +290,7 @@ function FacultyAssignments() {
 
   const rowsFor = (a: Assignment, src = db) => {
     const course = src.courses.find((c) => c.id === a.courseId)!
-    return course.studentIds.map((sid) => {
+    return course.studentIds.filter((sid) => visibleTo(a, sid)).map((sid) => {
       const s = src.submissions.find((x) => x.assignmentId === a.id && x.studentId === sid)
       const status: RowStatus = s?.marks !== undefined ? 'GRADED' : s ? (s.submittedAt > a.dueAt ? 'LATE' : 'SUBMITTED') : 'MISSING'
       return { student: src.users.find((u) => u.id === sid)!, sub: s, status }
@@ -281,7 +308,8 @@ function FacultyAssignments() {
     if (!parts.length) return setErr('Add at least one part.')
     for (const [i, p] of parts.entries()) {
       if (!p.prompt.trim()) return setErr(`Part ${i + 1}: enter the question or instruction.`)
-      if (isAuto(p)) {
+      if (p.type === 'blank' && !(p.accepted ?? []).some((x) => x.trim())) return setErr(`Part ${i + 1}: enter at least one accepted answer.`)
+      if (p.type === 'mcq' || p.type === 'msq') {
         const opts = p.options!.map((o) => o.trim())
         if (opts.filter(Boolean).length < 2) return setErr(`Part ${i + 1}: add at least two options.`)
         if (!p.correct?.length) return setErr(`Part ${i + 1}: mark the correct option${p.type === 'msq' ? 's' : ''}.`)
@@ -290,15 +318,17 @@ function FacultyAssignments() {
       if (p.type === 'file' && !p.accept?.length) return setErr(`Part ${i + 1}: choose at least one allowed file format.`)
     }
     // Drop empty MCQ options while keeping correct indexes aligned.
+    if (e.onlyFor && !e.onlyFor.length) return setErr('Select the students who get this assignment.')
     const clean = parts.map((p) => {
+      if (p.type === 'blank') return { ...p, accepted: (p.accepted ?? []).map((x) => x.trim()).filter(Boolean) }
       if (!isAuto(p)) return p
       const keep = p.options!.map((o, k) => ({ o: o.trim(), k })).filter((x) => x.o)
       return { ...p, options: keep.map((x) => x.o), correct: p.correct!.map((k) => keep.findIndex((x) => x.k === k)).filter((k) => k >= 0) }
     })
     const maxMarks = clean.reduce((t, p) => t + p.marks, 0)
-    const rec = { courseId: e.courseId, title: e.title.trim(), description: e.description ?? '', dueAt: new Date(e.due).getTime(), maxMarks, parts: clean }
+    const rec = { courseId: e.courseId, title: e.title.trim(), description: e.description ?? '', dueAt: new Date(e.due).getTime(), maxMarks, parts: clean, proctored: !!e.proctored, onlyFor: e.onlyFor, makeupOf: e.makeupOf }
     update((d) => { if (e.id) Object.assign(d.assignments.find((x) => x.id === e.id)!, rec); else d.assignments.push({ id: uid('as'), ...rec }) })
-    if (!e.id) notify(db.courses.find((c) => c.id === e.courseId)!.studentIds, `New assignment: ${rec.title} (due ${fmtDateTime(rec.dueAt)})`, '/assignments')
+    if (!e.id) notify(e.onlyFor ?? db.courses.find((c) => c.id === e.courseId)!.studentIds, `New ${e.makeupOf ? 'make-up ' : ''}assignment: ${rec.title} (due ${fmtDateTime(rec.dueAt)})`, '/assignments')
     audit(user.id, e.id ? 'ASSIGNMENT_EDIT' : 'ASSIGNMENT_CREATE', `${rec.title}: ${clean.length} part(s), ${maxMarks} marks`)
     setEditing(null)
   }
@@ -376,7 +406,12 @@ function FacultyAssignments() {
                 <Badge tone="success">{count('GRADED')} marked</Badge>
                 {count('MISSING') > 0 && <Badge tone="danger">{count('MISSING')} not submitted</Badge>}
                 <div className="grow" />
+                <button className="icon-btn" aria-label={`Delete ${a.title}`} title="Delete" onClick={() => deleteRecord('assignments', a.id, `assignment "${a.title}"${hasSubs ? ' and all its submissions' : ''}`, user.id, (d) => { d.submissions = d.submissions.filter((x) => x.assignmentId !== a.id); for (const sh of d.resultSheets) sh.components = sh.components.filter((c) => !(c.kind === 'assignment' && c.id === a.id)) })}><Trash2 size={14} /></button>
                 {!hasSubs && <button className="btn btn-ghost btn-sm" onClick={() => { setErr(''); setEditing({ ...a, due: new Date(a.dueAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), parts: a.parts ? a.parts.map((p) => ({ ...p, options: p.options ? [...p.options] : undefined })) : [{ ...newPart('text'), marks: a.maxMarks, prompt: 'Answer / link' }] }) }}><Pencil size={12} /> Edit</button>}
+                {a.proctored && <Badge tone="warning">Proctored</Badge>}
+                {a.onlyFor?.length ? <Badge tone="accent">{a.onlyFor.length} selected student(s)</Badge> : null}
+                {a.makeupOf && <Badge tone="accent">Make-up of {db.assignments.find((x) => x.id === a.makeupOf)?.title}</Badge>}
+                {!a.makeupOf && <button className="btn btn-ghost btn-sm" title="Same assignment for selected students (absent, or to retake)" onClick={() => { setErr(''); setEditing({ ...a, id: undefined, title: `${a.title} (make-up)`, makeupOf: a.id, onlyFor: rows.filter((r) => r.status === 'MISSING').map((r) => r.student.id), due: '', parts: (a.parts ?? partsOf(a)).map((p) => ({ ...p, options: p.options ? [...p.options] : undefined })) }) }}><Copy size={12} /> Make-up for selected</button>}
                 {count('SUBMITTED') + count('LATE') > 0 && <button className="btn btn-sm" onClick={() => { const r = rows.find((x) => x.status === 'SUBMITTED' || x.status === 'LATE')!; openMarking(a.id, r.student.id) }}>Start marking</button>}
                 <button className="btn btn-outline btn-sm" onClick={() => { setOpenId(expanded ? null : a.id); setFilter('all') }}>{expanded ? 'Hide students' : 'View all students'}</button>
               </div>
@@ -395,8 +430,8 @@ function FacultyAssignments() {
                           <td><Badge tone={status === 'GRADED' ? 'success' : status === 'MISSING' ? 'danger' : status === 'LATE' ? 'warning' : 'info'}>{status === 'MISSING' ? 'Not submitted' : status === 'GRADED' ? (sub?.gradedBy === 'auto' ? 'Auto-marked' : 'Marked') : status[0] + status.slice(1).toLowerCase()}</Badge></td>
                           <td className="small">{sub && sub.submittedAt ? fmtDateTime(sub.submittedAt) : '—'}</td>
                           <td className="small">{sub ? `${answered}/${ps.length} parts` : '—'}{sub && ps.some(isAuto) && status !== 'GRADED' && <div className="muted">MCQ auto: {auto}</div>}</td>
-                          <td>{sub?.marks !== undefined ? <strong>{sub.marks}/{a.maxMarks}</strong> : '—'}</td>
-                          <td><button className="btn btn-outline btn-sm" onClick={() => openMarking(a.id, student.id)}>{status === 'MISSING' ? 'Mark' : status === 'GRADED' ? 'View / edit' : 'View & mark'}</button></td>
+                          <td>{sub?.marks !== undefined ? <strong>{sub.marks}/{a.maxMarks}</strong> : '—'}{sub?.terminated ? <div><Badge tone="danger">Closed: {sub.violations} violations</Badge></div> : sub?.violations ? <div><Badge tone="warning">{sub.violations} warning(s)</Badge></div> : null}</td>
+                          <td className="row gap">{sub && <button className="btn btn-ghost btn-sm" title="Delete this attempt so the student can answer again" onClick={() => { if (!confirm(`Allow ${student.name} to answer "${a.title}" again? Their current submission is removed.`)) return; update((d) => { d.submissions = d.submissions.filter((x) => x.id !== sub.id); const x = d.assignments.find((y) => y.id === a.id)!; if (x.dueAt < Date.now()) x.dueAt = Date.now() + 2 * 86_400_000 }); notify([student.id], `You may answer "${a.title}" again.`, '/assignments'); audit(user.id, 'ASSIGNMENT_RETAKE_ALLOWED', `${a.title} · ${student.name}`) }}><RotateCcw size={12} /> Re-attempt</button>}<button className="btn btn-outline btn-sm" onClick={() => openMarking(a.id, student.id)}>{status === 'MISSING' ? 'Mark' : status === 'GRADED' ? 'View / edit' : 'View & mark'}</button></td>
                         </tr>
                       )
                     })}</tbody>
@@ -417,6 +452,18 @@ function FacultyAssignments() {
           </div>
           <Field label="Title"><input className="input" value={editing.title ?? ''} onChange={(e) => setEditing({ ...editing, title: e.target.value })} /></Field>
           <Field label="Instructions"><textarea className="textarea" style={{ minHeight: 70 }} value={editing.description ?? ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></Field>
+          <div className="row gap wrap">
+            <label className="row gap"><input type="checkbox" checked={!!editing.proctored} onChange={(e) => setEditing({ ...editing, proctored: e.target.checked })} /> Proctored (full screen, 2 warnings, closes on the 3rd)</label>
+            <label className="row gap"><input type="checkbox" checked={editing.onlyFor !== undefined} onChange={(e) => setEditing({ ...editing, onlyFor: e.target.checked ? [] : undefined })} /> Only for selected students</label>
+          </div>
+          {editing.makeupOf && <div className="alert alert-info small">Make-up of “{db.assignments.find((x) => x.id === editing.makeupOf)?.title}”: marks are recorded for that assignment (scaled to its total) for the selected students.</div>}
+          {editing.onlyFor !== undefined && (
+            <Field label={`Students (${editing.onlyFor.length} selected)`}>
+              <div className="pick-grid">{(db.courses.find((c) => c.id === editing.courseId)?.studentIds ?? []).map((sid) => { const on = editing.onlyFor!.includes(sid); return (
+                <label key={sid} className={`pick ${on ? 'on' : ''}`}><input type="checkbox" checked={on} onChange={() => setEditing({ ...editing, onlyFor: on ? editing.onlyFor!.filter((x) => x !== sid) : [...editing.onlyFor!, sid] })} /> {userName(db, sid)}</label>
+              ) })}</div>
+            </Field>
+          )}
 
           <h3>How students answer</h3>
           {parts.map((p, i) => {
@@ -442,7 +489,12 @@ function FacultyAssignments() {
                     </label>
                   ))}</div>
                 )}
-                {isAuto(p) && (
+                {p.type === 'blank' && (
+                  <Field label="Accepted answers (answer key)" hint="One per line or comma-separated; case and extra spaces are ignored. Marked automatically.">
+                    <textarea className="textarea" style={{ minHeight: 56 }} aria-label="Accepted answers" value={(p.accepted ?? []).join('\n')} onChange={(e) => setPart(p.id, { accepted: e.target.value.split(/[\n,]/) })} />
+                  </Field>
+                )}
+                {(p.type === 'mcq' || p.type === 'msq') && (
                   <div className="stack" style={{ gap: 6 }}>
                     {p.options!.map((o, k) => (
                       <div key={k} className="row gap">

@@ -1,19 +1,27 @@
 import { useState } from 'react'
-import { CalendarClock, Lock, MapPin, Plus, Video } from 'lucide-react'
+import { CalendarClock, Lock, MapPin, Plus, Trash2, Video } from 'lucide-react'
 import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, SearchBox, Stat, Tabs } from '../components/ui'
-import { OFFICES, officeUsers, persona } from '../access'
+import { OFFICES, officeUsers, persona, personaLabel } from '../access'
 import { DAYS, fmtDateTime, matches, timeAgo, userName } from '../lib'
 import type { Appointment, DB, Office, ServiceOffering, User } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord } from '../components/RecordEditor'
 
 const CATEGORIES: ServiceOffering['category'][] = ['Wellbeing', 'Academic', 'Administrative', 'Career', 'Financial', 'Leadership']
 const tone = (s: Appointment['status']) => (s === 'CONFIRMED' ? 'success' : s === 'COMPLETED' ? 'info' : s === 'REQUESTED' ? 'warning' : 'neutral')
 
 export const providerName = (db: DB, s: ServiceOffering) => (s.office ? OFFICES[s.office].label : userName(db, s.ownerFacultyId ?? ''))
 /** Staff who handle a service's bookings. */
-const handlers = (db: DB, s: ServiceOffering) => (s.office ? officeUsers(db, s.office) : s.ownerFacultyId ? [s.ownerFacultyId] : [])
-export const handlesService = (u: User, s: ServiceOffering) => persona(u) === 'super' || (u.role === 'admin' && u.office === s.office) || (u.role === 'faculty' && s.ownerFacultyId === u.id)
+/** Assigned people (e.g. the counsellor) take a service's bookings; otherwise the office or faculty owner does. */
+const handlers = (db: DB, s: ServiceOffering) => (s.assigneeIds?.length ? s.assigneeIds : s.office ? officeUsers(db, s.office) : s.ownerFacultyId ? [s.ownerFacultyId] : [])
+export const handlesService = (u: User, s: ServiceOffering) => persona(u) === 'super' || (u.role === 'admin' && u.office === s.office) || (u.role === 'faculty' && s.ownerFacultyId === u.id) || !!s.assigneeIds?.includes(u.id)
+/** Picks the assigned person with the fewest upcoming bookings. */
+const pickAssignee = (db: DB, s: ServiceOffering) => {
+  const list = s.assigneeIds ?? []
+  const load = (id: string) => db.appointments.filter((a) => a.assignedTo === id && (a.status === 'REQUESTED' || a.status === 'CONFIRMED') && a.at > Date.now()).length
+  return [...list].sort((a, b) => load(a) - load(b))[0]
+}
 const canPublish = (u: User) => u.role === 'admin' || u.role === 'faculty'
 
 /** Upcoming bookable times for a service over the next two weeks. */
@@ -37,8 +45,9 @@ export default function AppointmentsPanel() {
   const db = useDB()
   const me = useCurrentUser()!
   const isStudent = me.role === 'student'
+  const canBook = me.role !== 'parent' // students, faculty and staff can all book services
   const mine = db.services.filter((s) => handlesService(me, s))
-  const [tab, setTab] = useState<'browse' | 'mine' | 'manage'>(isStudent ? 'browse' : mine.length || canPublish(me) ? 'manage' : 'browse')
+  const [tab, setTab] = useState<'browse' | 'mine' | 'manage'>(isStudent ? 'browse' : mine.length ? 'manage' : 'browse')
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<'All' | ServiceOffering['category']>('All')
   const [booking, setBooking] = useState<ServiceOffering | null>(null)
@@ -59,8 +68,11 @@ export default function AppointmentsPanel() {
 
   const book = () => {
     if (!booking || !slot || !reason.trim()) return
-    update((d) => { d.appointments.push({ id: uid('apt'), serviceId: booking.id, studentId: me.id, at: slot, reason, status: 'REQUESTED', createdAt: Date.now() }) })
-    notify(handlers(db, booking), `New appointment request: ${booking.title}, ${fmtDateTime(slot)}${booking.confidential ? '' : ` (${me.name})`}`, '/help')
+    const assignee = pickAssignee(db, booking)
+    update((d) => { d.appointments.push({ id: uid('apt'), serviceId: booking.id, studentId: me.id, at: slot, reason, status: 'REQUESTED', createdAt: Date.now(), assignedTo: assignee }) })
+    // The assigned person gets the full slot details; for confidential services only they see who booked.
+    if (assignee) notify([assignee], `New booking for you: ${booking.title} · ${fmtDateTime(slot)} (${booking.durationMin} min, ${booking.mode}, ${booking.location}) · ${me.name}${me.rollNo ? ` (${me.rollNo})` : ''}, ${personaLabel(me)}${me.phone ? ` · ${me.phone}` : ''}`, '/help')
+    else notify(handlers(db, booking), `New appointment request: ${booking.title}, ${fmtDateTime(slot)}${booking.confidential ? '' : ` (${me.name})`}`, '/help')
     setBooking(null); setSlot(null); setReason(''); setTab('mine')
   }
   const decide = () => {
@@ -68,7 +80,7 @@ export default function AppointmentsPanel() {
     const { a, action } = deciding
     const s = db.services.find((x) => x.id === a.serviceId)!
     update((d) => { const x = d.appointments.find((y) => y.id === a.id)!; x.status = action; if (note.trim()) x.note = note.trim() })
-    notify([a.studentId], `${s.title} on ${fmtDateTime(a.at)}: ${action.toLowerCase()}${note.trim() ? `. ${note.trim()}` : ''}`, '/help')
+    notify([a.studentId], `${s.title} on ${fmtDateTime(a.at)}: ${action.toLowerCase()}${a.assignedTo ? ` (with ${userName(db, a.assignedTo)})` : ''}${note.trim() ? `. ${note.trim()}` : ''}`, '/help')
     audit(me.id, `APPOINTMENT_${action}`, `${s.title} for ${s.confidential ? 'a student (confidential)' : userName(db, a.studentId)}`)
     setDeciding(null); setNote('')
   }
@@ -80,7 +92,10 @@ export default function AppointmentsPanel() {
       if (e.id) Object.assign(d.services.find((s) => s.id === e.id)!, e)
       else d.services.push({ id: uid('sv'), description: '', category: 'Academic', mode: 'In person', location: '', durationMin: 20, maxPerSlot: 1, confidential: false, active: true, createdBy: me.id, ...e, ...owner, slots: e.slots!, title: e.title! })
     })
-    audit(me.id, e.id ? 'SERVICE_EDIT' : 'SERVICE_CREATE', e.title!)
+    const before = e.id ? db.services.find((x) => x.id === e.id)?.assigneeIds ?? [] : []
+    const added = (e.assigneeIds ?? []).filter((x) => !before.includes(x))
+    if (added.length) notify(added, `You are assigned to “${e.title}”. Bookings will reach you with their slot details.`, '/help')
+    audit(me.id, e.id ? 'SERVICE_EDIT' : 'SERVICE_CREATE', `${e.title}${e.assigneeIds?.length ? ` · assigned: ${e.assigneeIds.map((x) => userName(db, x)).join(', ')}` : ''}`)
     setEditing(null)
   }
 
@@ -89,7 +104,7 @@ export default function AppointmentsPanel() {
       <div className="row between wrap gap">
         <Tabs value={tab} onChange={setTab} tabs={[
           { id: 'browse', label: 'Book a service', count: services.length },
-          ...(isStudent ? [{ id: 'mine' as const, label: 'My appointments', count: myAppts.filter((a) => a.status === 'REQUESTED' || a.status === 'CONFIRMED').length }] : []),
+          ...(canBook ? [{ id: 'mine' as const, label: 'My appointments', count: myAppts.filter((a) => a.status === 'REQUESTED' || a.status === 'CONFIRMED').length }] : []),
           ...(mine.length || canPublish(me) ? [{ id: 'manage' as const, label: 'Manage bookings', count: queue.filter((a) => a.status === 'REQUESTED').length }] : []),
         ]} />
         <SearchBox value={q} onChange={setQ} placeholder={tab === 'manage' ? 'Search student, roll no., service…' : 'Search services…'} />
@@ -108,7 +123,7 @@ export default function AppointmentsPanel() {
                   <div className="small row gap wrap"><span className="row gap"><MapPin size={12} /> {s.location}</span>{s.mode !== 'In person' && <span className="row gap"><Video size={12} /> {s.mode}</span>}<span>{s.durationMin} min</span></div>
                   <div className="small muted">Available: {[...new Set(s.slots.map((x) => x.day))].sort().map((d) => DAYS[d]).join(', ')}</div>
                   {s.confidential && <div className="small row gap" style={{ color: 'var(--success)' }}><Lock size={12} /> Confidential: only the {providerName(db, s)} sees your details</div>}
-                  {isStudent && <button className="btn" onClick={() => { setBooking(s); setSlot(null) }}><CalendarClock size={14} /> Book appointment</button>}
+                  {canBook && <button className="btn" onClick={() => { setBooking(s); setSlot(null) }}><CalendarClock size={14} /> Book appointment</button>}
                 </div>
               </Card>
             ))}
@@ -116,7 +131,7 @@ export default function AppointmentsPanel() {
         </>
       )}
 
-      {tab === 'mine' && isStudent && (
+      {tab === 'mine' && canBook && (
         <Card>
           {myAppts.length === 0 ? <Empty text="You have no appointments yet." /> : (
             <div className="list">{myAppts.map((a) => { const s = db.services.find((x) => x.id === a.serviceId)!; return (
@@ -146,13 +161,18 @@ export default function AppointmentsPanel() {
           <Card title="Booking queue">
             {queue.length === 0 ? <Empty text="No bookings yet." /> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>When</th><th>Service</th><th>Student</th><th>Reason</th><th>Status</th><th /></tr></thead>
+                <thead><tr><th>When</th><th>Service</th><th>Booked by</th><th>Reason</th><th>Assigned to</th><th>Status</th><th /></tr></thead>
                 <tbody>{queue.map((a) => { const s = db.services.find((x) => x.id === a.serviceId)!; const st = db.users.find((u) => u.id === a.studentId); return (
                   <tr key={a.id}>
                     <td>{fmtDateTime(a.at)}<div className="small muted">requested {timeAgo(a.createdAt)}</div></td>
                     <td>{s.title}</td>
-                    <td>{st?.name}<div className="small muted">{st?.rollNo}</div></td>
+                    <td>{st?.name}<div className="small muted">{st?.rollNo ?? (st && personaLabel(st))}</div></td>
                     <td style={{ whiteSpace: 'normal', minWidth: 180 }}>{a.reason}</td>
+                    <td>{(s.assigneeIds?.length ?? 0) > 1 || (a.assignedTo && !s.assigneeIds?.includes(a.assignedTo)) ? (
+                      <select className="select" style={{ width: 'auto' }} aria-label="Assigned to" value={a.assignedTo ?? ''} onChange={(e) => { const to = e.target.value; update((d) => { d.appointments.find((x) => x.id === a.id)!.assignedTo = to || undefined }); if (to) notify([to], `Booking reassigned to you: ${s.title} · ${fmtDateTime(a.at)} · ${st?.name}`, '/help'); audit(me.id, 'APPOINTMENT_REASSIGN', `${s.title} → ${userName(db, to)}`) }}>
+                        <option value="">Unassigned</option>{(s.assigneeIds ?? []).map((id) => <option key={id} value={id}>{userName(db, id)}</option>)}
+                      </select>
+                    ) : <span className="small">{a.assignedTo ? userName(db, a.assignedTo) : <span className="muted">Office</span>}</span>}</td>
                     <td><Badge tone={tone(a.status)}>{a.status}</Badge></td>
                     <td><div className="row gap">
                       {a.status === 'REQUESTED' && <><button className="btn btn-success btn-sm" onClick={() => { setDeciding({ a, action: 'CONFIRMED' }); setNote(s.mode !== 'In person' ? '' : `Please come to ${s.location}.`) }}>Confirm</button><button className="btn btn-danger btn-sm" onClick={() => { setDeciding({ a, action: 'DECLINED' }); setNote('') }}>Decline</button></>}
@@ -170,6 +190,7 @@ export default function AppointmentsPanel() {
                   <div className="grow"><strong>{s.title}</strong> {!s.active && <Badge>Paused</Badge>}<div className="small muted">{s.slots.length} weekly slots · {s.durationMin} min · {db.appointments.filter((a) => a.serviceId === s.id).length} bookings</div></div>
                   <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { const x = d.services.find((y) => y.id === s.id)!; x.active = !x.active })}>{s.active ? 'Pause' : 'Resume'}</button>
                   <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...s })}>Edit</button>
+                  <button className="icon-btn" aria-label={`Delete ${s.title}`} title="Delete" onClick={() => deleteRecord('services', s.id, s.title, me.id, (d) => { for (const a of d.appointments) if (a.serviceId === s.id && (a.status === 'REQUESTED' || a.status === 'CONFIRMED')) a.status = 'CANCELLED' })}><Trash2 size={14} /></button>
                 </div>
               ))}</div>
             )}
@@ -208,6 +229,7 @@ export default function AppointmentsPanel() {
             <Field label="Location / meeting link"><input className="input" value={editing.location ?? ''} onChange={(e) => setEditing({ ...editing, location: e.target.value })} /></Field>
             <Field label="Duration (min)"><input className="input" type="number" min={5} value={editing.durationMin ?? 20} onChange={(e) => setEditing({ ...editing, durationMin: Number(e.target.value) })} /></Field>
             <Field label="Bookings per slot"><input className="input" type="number" min={1} value={editing.maxPerSlot ?? 1} onChange={(e) => setEditing({ ...editing, maxPerSlot: Number(e.target.value) })} /></Field>
+            <Field label="Assigned people" hint="They receive every booking with its slot, e.g. the counsellor"><select className="select" multiple style={{ height: 96 }} value={editing.assigneeIds ?? []} onChange={(e) => setEditing({ ...editing, assigneeIds: [...e.target.selectedOptions].map((o) => o.value) })}>{db.users.filter((u) => u.role !== 'student' && u.role !== 'parent' && u.status === 'ACTIVE').map((u) => <option key={u.id} value={u.id}>{u.name} · {personaLabel(u)}</option>)}</select></Field>
             {persona(me) === 'super' && <Field label="Office"><select className="select" value={editing.office ?? 'studentAffairs'} onChange={(e) => setEditing({ ...editing, office: e.target.value as Office })}>{(Object.keys(OFFICES) as Office[]).map((o) => <option key={o} value={o}>{OFFICES[o].label}</option>)}</select></Field>}
           </div>
           <label className="row gap"><input type="checkbox" checked={!!editing.confidential} onChange={(e) => setEditing({ ...editing, confidential: e.target.checked })} /> Confidential (hide the student's name in notifications and the audit log)</label>

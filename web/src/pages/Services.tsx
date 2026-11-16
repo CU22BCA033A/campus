@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Bus, CheckCircle2, CreditCard, DoorOpen, Phone, Plus, Receipt, ShieldCheck, Undo2 } from 'lucide-react'
-import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store'
+import { CheckCircle2, CreditCard, DoorOpen, Plus, Receipt, ShieldCheck, Undo2 } from 'lucide-react'
+import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, SearchBox, Stat, Tabs } from '../components/ui'
 import { classLabel } from '../classes'
 import { feeOutstanding, fmtDate, fmtDateTime, inr, matches, userName } from '../lib'
 import { can, officeUsers } from '../access'
-import type { FeeItem } from '../data/types'
+import type { DB, FeeItem } from '../data/types'
 import { FilterBar, opts as optList, useFilters } from '../components/Filters'
 import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 /* ---------------- Fees ---------------- */
 // Gateways are selectable by the payer; each shows its convenience charge.
@@ -172,6 +173,8 @@ function FeeAdmin() {
   const db = useDB()
   const me = useCurrentUser()!
   const [tab, setTab] = useState<'dues' | 'refunds' | 'scholarships'>('dues')
+  const [feesFor, setFeesFor] = useState<string | null>(null)
+  const [addFee, setAddFee] = useState<{ scope: 'student' | 'class'; id: string } | null>(null)
   const students = db.users.filter((u) => u.role === 'student')
   const [q, setQ] = useState('')
   const [batchF, setBatchF] = useState('all')
@@ -230,6 +233,7 @@ function FeeAdmin() {
             <Badge tone="info">{rows.length} student(s)</Badge><Badge tone="success">Paid {inr(totals.paid)}</Badge><Badge tone="danger">Outstanding {inr(totals.out)}</Badge>
             <div className="grow" />
             {rows.some((r) => r.out > 0) && <button className="btn btn-outline btn-sm" onClick={() => { rows.filter((r) => r.out > 0).forEach((r) => remind(r.s.id, r.out)); alert(`Reminders sent to ${rows.filter((r) => r.out > 0).length} student(s) and their parents.`) }}>Remind all filtered</button>}
+            {classF !== 'all' && <button className="btn btn-outline btn-sm" onClick={() => setAddFee({ scope: 'class', id: classF })}>Add fee for this class</button>}
             <button className="btn btn-outline btn-sm" onClick={exportDues}>Export CSV</button>
           </div>
           <div className="table-wrap">
@@ -242,7 +246,7 @@ function FeeAdmin() {
                     <td className="small">{classLabel(db.classes.find((c) => c.id === s.classId))}</td>
                     <td>{inr(f.reduce((a, x) => a + (x.paidAmount ?? (x.paidAt ? x.amount : 0)), 0))}</td><td>{inr(f.reduce((a, x) => a + (x.scholarship ?? 0), 0))}</td><td>{inr(out)}</td>
                     <td><Badge tone={out ? (overdue ? 'danger' : 'warning') : 'success'}>{out ? (overdue ? 'Overdue' : 'Due') : 'Clear'}</Badge></td>
-                    <td>{out > 0 && <button className="btn btn-outline btn-sm" onClick={() => remind(s.id, out)}>Send reminder</button>}</td>
+                    <td className="row gap"><button className="btn btn-ghost btn-sm" onClick={() => setFeesFor(s.id)}>Fee items</button>{out > 0 && <button className="btn btn-outline btn-sm" onClick={() => remind(s.id, out)}>Send reminder</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -292,15 +296,43 @@ function FeeAdmin() {
           </Card>
         </div>
       )}
+      {feesFor && <StudentFeeItems studentId={feesFor} onClose={() => setFeesFor(null)} onAdd={() => setAddFee({ scope: 'student', id: feesFor })} />}
+      {addFee && <RecordEditor title={addFee.scope === 'class' ? `Add fee for ${classLabel(db.classes.find((c) => c.id === addFee.id))}` : `Add fee for ${userName(db, addFee.id)}`} collection="fees" record={{ studentId: addFee.scope === 'student' ? addFee.id : '__class', head: 'Other', dueAt: Date.now() + 14 * 86_400_000 }} actorId={me.id} onClose={() => setAddFee(null)}
+        onSaved={(id) => { if (addFee.scope !== 'class') return; const tpl = getDB().fees.find((x) => x.id === id)!; const ids = db.users.filter((u) => u.role === 'student' && u.classId === addFee.id && u.status === 'ACTIVE').map((u) => u.id); update((d) => { d.fees = d.fees.filter((x) => x.id !== id); for (const sid of ids) d.fees.push({ ...tpl, id: uid('fee'), studentId: sid }) }); notify(ids, `New fee: ${tpl.title} ${inr(tpl.amount)}, due ${fmtDate(tpl.dueAt)}`, '/fees') }}
+        fields={[{ key: 'title', label: 'Title', required: true }, { key: 'amount', label: 'Amount (₹)', type: 'number', required: true }, { key: 'head', label: 'Head', type: 'select', options: ['Tuition', 'Exam', 'Hostel', 'Transport', 'Other'].map((x) => ({ value: x, label: x })) }, { key: 'dueAt', label: 'Due', type: 'dateMs', required: true }]} />}
     </>
   )
 }
 
 /* ---------------- Gate pass ---------------- */
+/** Finance: every fee item of one student, edited or removed by hand. */
+function StudentFeeItems({ studentId, onClose, onAdd }: { studentId: string; onClose: () => void; onAdd: () => void }) {
+  const db = useDB()
+  const me = useCurrentUser()!
+  const [edit, setEdit] = useState<FeeItem | null>(null)
+  const items = db.fees.filter((f) => f.studentId === studentId).sort((a, b) => b.dueAt - a.dueAt)
+  return (
+    <Modal wide title={`Fees · ${userName(db, studentId)}`} onClose={onClose} footer={<button className="btn" onClick={onAdd}>Add fee item</button>}>
+      <div className="table-wrap"><table>
+        <thead><tr><th>Item</th><th>Head</th><th>Amount</th><th>Scholarship</th><th>Paid</th><th>Due</th><th /></tr></thead>
+        <tbody>{items.map((f) => (
+          <tr key={f.id}>
+            <td>{f.title}{f.txnId && <div className="small muted">{f.txnId}</div>}</td><td>{f.head ?? 'Other'}</td><td>{inr(f.amount)}</td><td>{f.scholarship ? inr(f.scholarship) : '—'}</td>
+            <td>{inr(f.paidAmount ?? (f.paidAt ? f.amount : 0))}</td><td className="small">{fmtDate(f.dueAt)}</td>
+            <td><RowActions label={f.title} onEdit={() => setEdit(f)} onDelete={() => deleteRecord('fees', f.id, `${f.title} (${inr(f.amount)})`, me.id)} /></td>
+          </tr>
+        ))}</tbody>
+      </table></div>
+      {edit && <RecordEditor title={`Edit ${edit.title}`} collection="fees" record={edit} actorId={me.id} onClose={() => setEdit(null)} fields={[{ key: 'title', label: 'Title', required: true }, { key: 'amount', label: 'Amount (₹)', type: 'number', required: true }, { key: 'head', label: 'Head', type: 'select', options: ['Tuition', 'Exam', 'Hostel', 'Transport', 'Other'].map((x) => ({ value: x, label: x })) }, { key: 'scholarship', label: 'Scholarship / waiver (₹)', type: 'number' }, { key: 'paidAmount', label: 'Paid (₹)', type: 'number', hint: 'Record a counter payment by hand' }, { key: 'dueAt', label: 'Due', type: 'dateMs' }, { key: 'txnId', label: 'Receipt / transaction no.' }]} />}
+    </Modal>
+  )
+}
+
 export function GatePass() {
   const db = useDB()
   const user = useCurrentUser()!
   const [creating, setCreating] = useState(false)
+  const [editG, setEditG] = useState<DB['gatePasses'][number] | null>(null)
   const [draft, setDraft] = useState({ reason: '', out: '', back: '' })
   const [term, setTerm] = useState('')
   const isStudent = user.role === 'student'
@@ -343,6 +375,7 @@ export function GatePass() {
             {!isStudent && g.status === 'PENDING' && (
               <div className="row gap" style={{ marginTop: 12 }}><button className="btn btn-success btn-sm" onClick={() => review(g.id, 'APPROVED')}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => review(g.id, 'REJECTED')}>Reject</button></div>
             )}
+            {!isStudent && <div className="row" style={{ marginTop: 8, justifyContent: 'flex-end' }}><RowActions label="gate pass" onEdit={() => setEditG(g)} onDelete={() => deleteRecord('gatePasses', g.id, `gate pass of ${userName(db, g.studentId)}`, user.id)} /></div>}
             {isStudent && g.status === 'APPROVED' && g.returnAt > Date.now() && (
               <div className="alert alert-success" style={{ marginTop: 12 }}>Show this pass at the gate · Pass #{g.id.toUpperCase()}</div>
             )}
@@ -358,94 +391,11 @@ export function GatePass() {
           </div>
         </Modal>
       )}
+      {editG && <RecordEditor title={`Gate pass · ${userName(db, editG.studentId)}`} collection="gatePasses" record={editG} actorId={user.id} onClose={() => setEditG(null)} fields={[{ key: 'reason', label: 'Reason', required: true }, { key: 'outAt', label: 'Out', type: 'datetimeMs' }, { key: 'returnAt', label: 'Return', type: 'datetimeMs' }, { key: 'status', label: 'Status', type: 'select', options: ['PENDING', 'APPROVED', 'REJECTED'].map((x) => ({ value: x, label: x[0] + x.slice(1).toLowerCase() })) }]} />}
     </>
   )
 }
 
 /* ---------------- Transport ---------------- */
-export function Transport() {
-  const db = useDB()
-  const user = useCurrentUser()!
-  const mine = db.routes.find((r) => r.subscribers.includes(user.id))
-  const [term, setTerm] = useState('')
-  const subscribe = (id: string) => update((d) => { d.routes.forEach((r) => { r.subscribers = r.subscribers.filter((s) => s !== user.id); if (r.id === id) r.subscribers.push(user.id) }) })
-  return (
-    <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search route, stop or bus…' }} title="Transport" subtitle="Campus bus routes and timings" />
-      {mine && <div className="alert alert-info"><Bus size={16} /> You are registered on <strong>&nbsp;{mine.name}</strong>&nbsp;· Bus {mine.bus}</div>}
-      <div className="grid grid-3">
-        {db.routes.filter((r) => matches(term, r.name, r.bus, r.driver, ...r.stops.map((x) => x.name))).map((r) => (
-          <Card key={r.id} title={r.name} action={mine?.id === r.id && <Badge tone="success">My route</Badge>}>
-            <div className="stack">
-              <div className="small muted">Bus {r.bus} · {r.subscribers.length} riders</div>
-              <div className="list">
-                {r.stops.map((s, i) => (
-                  <div key={i} className="list-item small" style={{ padding: '6px 0' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: i === r.stops.length - 1 ? 'var(--brand)' : 'var(--accent)' }} />
-                    <span className="grow">{s.name}</span><strong>{s.time}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="small row gap"><Phone size={14} /> {r.driver} · <a href={`tel:${r.driverPhone}`}>{r.driverPhone}</a></div>
-              {user.role === 'student' && mine?.id !== r.id && <button className="btn btn-outline" onClick={() => subscribe(r.id)}>Register for this route</button>}
-            </div>
-          </Card>
-        ))}
-      </div>
-    </>
-  )
-}
 
 /* ---------------- Venue booking ---------------- */
-const VENUES = ['Seminar Hall A', 'Seminar Hall B', 'Auditorium', 'Conference Room', 'Lab-1', 'Lab-2', 'Lab-3']
-const SLOTS = ['09:00–11:00', '11:00–13:00', '14:00–16:00', '16:00–18:00']
-
-export function Venues() {
-  const db = useDB()
-  const user = useCurrentUser()!
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [booking, setBooking] = useState<{ venue: string; slot: string } | null>(null)
-  const [purpose, setPurpose] = useState('')
-  const [term, setTerm] = useState('')
-  const book = () => {
-    if (!booking || !purpose.trim()) return
-    update((d) => { d.bookings.push({ id: uid('b'), venue: booking.venue, slot: booking.slot, date, purpose, bookedBy: user.id }) })
-    setBooking(null); setPurpose('')
-  }
-  return (
-    <>
-      <PageHeader search={{ value: term, onChange: setTerm, placeholder: 'Search…' }} title="Venue booking" subtitle="Reserve halls and labs" actions={<input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 180 }} />} />
-      <Card>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Venue</th>{SLOTS.map((s) => <th key={s}>{s}</th>)}</tr></thead>
-            <tbody>
-              {VENUES.filter((v) => matches(term, v, ...db.bookings.filter((b) => b.venue === v && b.date === date).map((b) => `${b.purpose} ${userName(db, b.bookedBy)}`))).map((v) => (
-                <tr key={v}>
-                  <td><strong>{v}</strong></td>
-                  {SLOTS.map((s) => {
-                    const b = db.bookings.find((x) => x.venue === v && x.slot === s && x.date === date)
-                    return (
-                      <td key={s}>
-                        {b ? (
-                          <div className="small"><Badge tone={b.bookedBy === user.id ? 'brand' : 'neutral'}>{b.bookedBy === user.id ? 'Your booking' : 'Booked'}</Badge><div className="muted ellipsis" style={{ maxWidth: 140 }}>{b.purpose} · {userName(db, b.bookedBy)}</div>
-                            {(b.bookedBy === user.id || can(user, 'manageAllBookings')) && <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.bookings = d.bookings.filter((x) => x.id !== b.id) })}>Cancel</button>}</div>
-                        ) : <button className="btn btn-outline btn-sm" onClick={() => setBooking({ venue: v, slot: s })}>Book</button>}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      {booking && (
-        <Modal title={`Book ${booking.venue}`} onClose={() => setBooking(null)} footer={<><button className="btn btn-ghost" onClick={() => setBooking(null)}>Cancel</button><button className="btn" onClick={book}>Confirm booking</button></>}>
-          <div>{fmtDate(date)} · {booking.slot}</div>
-          <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
-        </Modal>
-      )}
-    </>
-  )
-}

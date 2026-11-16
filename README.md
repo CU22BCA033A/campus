@@ -39,6 +39,9 @@ npm run build      # production build in web/dist
 | Office of Student Affairs | `studentaffairs@campus.edu` | `studentaffairs123` |
 | Library | `library@campus.edu` | `library123` |
 | Placement cell | `placement@campus.edu` | `placement123` |
+| Counsellor (Student Affairs) | `counsellor@campus.edu` | `counsellor123` |
+| Estate & Facilities (venues, maintenance) | `facilities@campus.edu` | `facilities123` |
+| Transport Department | `transport@campus.edu` | `transport123` |
 | Parent (two wards) | `parent@campus.edu` | `parent123` |
 | First login (forced password change) | `new@campus.edu` | `welcome123` |
 | Deactivated account | `kavya.das@campus.edu` | `student123` |
@@ -207,9 +210,64 @@ and parents see the roll-call record. Wardens can rename their hostel.
 
 Offices (and faculty, e.g. HOD office hours) publish bookable services with weekly slots:
 counselling centre, Meet the Vice-Chancellor, Registrar, results help desk, fee counselling,
-career counselling and more. Students book a slot; the owning office confirms (with a room or
+career counselling and more. Students, faculty and staff book a slot; the owning office confirms (with a room or
 link), declines or completes it. Confidential services hide the student's name from
 notifications and the audit log.
+
+**Assigned people.** A service can have assigned handlers (e.g. the counsellor). Each booking goes to the
+assigned person with the least upcoming load, with full slot details (date, time, duration, mode, location,
+who booked and their phone); it can be reassigned. **Tickets** go to the person assigned to their category
+(*Help Center → Requests & tickets → Assign handlers*, system administrator) and can be reassigned by whoever handles them.
+
+## Venue booking (Estate & Facilities)
+
+Venues (auditorium, seminar halls, labs, grounds) have a type, capacity, opening hours, amenities and a
+**manager** chosen by Estate & Facilities. Anyone can see availability on a timeline and book a time range;
+overlapping requests or bookings are refused. Venues that need approval send the request to their manager
+(with all details); approval, rejection and cancellation notify the person who booked.
+
+## Library department
+
+Accession-numbered copies; issue from the circulation desk after finding the member by name, roll/register
+number, email or ID (their books, history and dues show at once). Default loan 14 days (editable), renewals,
+reservations queue, lost copies. Late returns are fined per day (rules editable); the fine is paid at the
+library counter with a printable **receipt**, or **waived** with a reason (no longer added to student fees).
+Students with an unpaid fine or overdue book are **blocked** from borrowing; faculty and staff get a **warning**.
+
+## Transport Department
+
+Routes with stops and pick-up times, bus, driver, seats, semester fee and evening departure. Students and
+staff request a pass at a stop; the department approves it (students get the transport fee in Fees),
+manages riders, and sends announcements to a route.
+
+## Placement Cell
+
+Company directory; drives with CTC, eligibility (CGPA, backlogs, programmes, batches), selection rounds
+and dates; round-by-round pipeline (shortlist, schedule interviews, pass, reject, select with an offer);
+students accept or decline offers; one-offer policy with a dream-offer threshold; dashboard with placed %,
+highest/average/median CTC, offers by company and programme; student placement profiles (resume, skills); CSV.
+
+## Hall tickets
+
+Students no longer download hall tickets. The Registrar of Evaluation prints a class's tickets (one per
+page) from *Examinations → Hall tickets*. Each ticket lists that student's own papers: class courses they are
+still registered in (drops removed, office additions included), foundation / open-elective and backlog
+(supplementary) papers in the same exam period, with papers they are not eligible for printed as withheld.
+
+## Tests and assignments
+
+Answer keys are set when creating: one correct, multiple correct, true/false and fill-in-the-blank (several
+accepted answers; case and spacing ignored); marks show as soon as the student submits. **Proctored**
+tests/assignments open in full screen; leaving the screen gives 2 warnings, the 3rd closes the attempt and
+informs the faculty member, who can **allow a re-attempt**. **Make-up** tests/assignments go only to selected
+students (absentees are pre-selected) and their marks count for the original in the result sheet.
+
+## Manual edits
+
+Every office can correct records by hand: edit / delete buttons on courses and registrations (any time,
+any student, over capacity), events, notices, polls, clubs, posts, course materials, alumni, applications,
+leave, purchase requests, assets, tickets, fee items (or a fee for a whole class), gate passes, services,
+tests, assignments, classes, venues, routes, books, drives and companies. Every change is in the audit log.
 
 ## Filters on every list
 

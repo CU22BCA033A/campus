@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, Download, Lock, Pencil, Plus, Send, Unlock, Users } from 'lucide-react'
+import { ClipboardCheck, Download, Lock, Pencil, Plus, Send, Trash2, Unlock, Users } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { FilterBar, opts, useFilters } from '../components/Filters'
@@ -84,6 +84,25 @@ function RegistrationOffice() {
   const seats = open.reduce((t, c) => t + (c.slots ?? 0), 0)
   const filled = open.reduce((t, c) => t + c.studentIds.length, 0)
 
+  const deleteCourse = (c: Course) => {
+    const exams = db.exams.filter((e) => e.courseId === c.id)
+    const published = db.resultSheets.some((sh) => sh.courseId === c.id && sh.status === 'PUBLISHED')
+    if (published) return alert(`${c.code} has published results, so it is part of students' academic records and cannot be deleted. Edit it instead.`)
+    if (!confirm(`Delete ${c.code} ${c.name}? ${c.studentIds.length} registration(s)${exams.length ? `, ${exams.length} exam paper(s)` : ''} and its unpublished result sheet, attendance, assignments and timetable slots are removed too.`)) return
+    update((d) => {
+      const examIds = new Set(d.exams.filter((e) => e.courseId === c.id).map((e) => e.id))
+      d.courses = d.courses.filter((x) => x.id !== c.id)
+      d.registrations = d.registrations.filter((r) => r.courseId !== c.id)
+      d.resultSheets = d.resultSheets.filter((sh) => sh.courseId !== c.id)
+      d.exams = d.exams.filter((e) => !examIds.has(e.id)); d.results = d.results.filter((r) => !examIds.has(r.examId))
+      d.attendance = d.attendance.filter((a) => a.courseId !== c.id); d.timetable = d.timetable.filter((t) => t.courseId !== c.id)
+      const asg = new Set(d.assignments.filter((a) => a.courseId === c.id).map((a) => a.id)); d.assignments = d.assignments.filter((a) => !asg.has(a.id)); d.submissions = d.submissions.filter((x) => !asg.has(x.assignmentId))
+      const qz = new Set(d.quizzes.filter((q) => q.courseId === c.id).map((q) => q.id)); d.quizzes = d.quizzes.filter((q) => !qz.has(q.id)); d.attempts = d.attempts.filter((x) => !qz.has(x.quizId))
+      for (const u of d.users) if (u.backlogCourses?.includes(c.id)) u.backlogCourses = u.backlogCourses.filter((x) => x !== c.id)
+    })
+    notify([c.facultyId, ...c.studentIds], `${c.code} ${c.name} was withdrawn by the Registrar of Evaluation`, '/registration')
+    audit(me.id, 'COURSE_DELETE', `${c.code} ${c.name}`)
+  }
   const toggleWindow = () => {
     update((d) => { d.registration.open = !d.registration.open })
     if (!settings.open) notify(students.map((s) => s.id), `Course registration for ${settings.registrationTerm} is open${settings.closesAt ? ` until ${fmtDate(settings.closesAt)}` : ''}. Choose your foundation course and open elective.`, '/registration')
@@ -105,7 +124,7 @@ function RegistrationOffice() {
         search={{ value: q, onChange: setQ, placeholder: 'Search course, faculty or student…' }}
         actions={manage && <button className="btn" onClick={() => setEditing({ kind: 'CORE', credits: 4, slots: 60 })}><Plus size={14} /> New course</button>} />
       <div className={`alert ${settings.open ? 'alert-success' : 'alert-warning'} row between wrap`}>
-        <span>Registration for <strong>{settings.registrationTerm}</strong> is <strong>{settings.open ? 'open' : 'closed'}</strong>{settings.closesAt ? ` · closes ${fmtDate(settings.closesAt)}` : ''}. Each student takes {settings.minFoundation} foundation course and {settings.minOpenElective} open elective. Running now: {settings.currentTerm}.</span>
+        <span>Registration for <strong>{settings.registrationTerm}</strong> is <strong>{settings.open ? 'open' : 'closed'}</strong>{settings.closesAt ? ` · closes ${fmtDate(settings.closesAt)}` : ''}. Each student takes {settings.minFoundation} foundation course and {settings.minOpenElective} open elective{settings.minCredits ? `, at least ${settings.minCredits} credits` : ''}{settings.maxCredits ? ` (max ${settings.maxCredits})` : ''}. Running now: {settings.currentTerm}.</span>
         {manage && <button className="btn btn-sm btn-outline" onClick={toggleWindow}>{settings.open ? <><Lock size={12} /> Close registration</> : <><Unlock size={12} /> Open registration</>}</button>}
       </div>
       <div className="grid grid-4">
@@ -134,7 +153,8 @@ function RegistrationOffice() {
                     <td><Seats c={c} /></td>
                     <td className="row gap">
                       <button className="btn btn-outline btn-sm" onClick={() => setRoster(c.id)}><Users size={12} /> Students</button>
-                      {manage && whenOf(c) !== 'past' && <button className="icon-btn" aria-label={`Edit ${c.code}`} onClick={() => setEditing(c)}><Pencil size={14} /></button>}
+                      {manage && <button className="icon-btn" aria-label={`Edit ${c.code}`} onClick={() => setEditing(c)}><Pencil size={14} /></button>}
+                      {manage && <button className="icon-btn" aria-label={`Delete ${c.code}`} onClick={() => deleteCourse(c)}><Trash2 size={14} /></button>}
                     </td>
                   </tr>
                 ))}</tbody>
@@ -190,7 +210,7 @@ function SettingsPanel({ manage }: { manage: boolean }) {
   const [s, setS] = useState({ ...db.registration, closes: db.registration.closesAt ? new Date(db.registration.closesAt).toISOString().slice(0, 10) : '' })
   const save = () => {
     if (!s.registrationTerm.trim() || !s.currentTerm.trim()) return alert('Name both terms.')
-    update((d) => { d.registration = { currentTerm: s.currentTerm.trim(), registrationTerm: s.registrationTerm.trim(), open: s.open, closesAt: s.closes ? new Date(`${s.closes}T23:59`).getTime() : undefined, minFoundation: s.minFoundation, minOpenElective: s.minOpenElective } })
+    update((d) => { d.registration = { currentTerm: s.currentTerm.trim(), registrationTerm: s.registrationTerm.trim(), open: s.open, closesAt: s.closes ? new Date(`${s.closes}T23:59`).getTime() : undefined, minFoundation: s.minFoundation, minOpenElective: s.minOpenElective, minCredits: s.minCredits || undefined, maxCredits: s.maxCredits } })
     audit(me.id, 'REGISTRATION_SETTINGS', `${s.registrationTerm}: ${s.minFoundation} foundation, ${s.minOpenElective} open elective`)
     alert('Registration settings saved.')
   }
@@ -209,6 +229,8 @@ function SettingsPanel({ manage }: { manage: boolean }) {
           <Field label="Registering for" hint="Usually the next term; same as above for a late window"><input className="input" disabled={!manage} value={s.registrationTerm} onChange={(e) => setS({ ...s, registrationTerm: e.target.value })} /></Field>
           <Field label="Foundation courses per student"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minFoundation} onChange={(e) => setS({ ...s, minFoundation: Number(e.target.value) })} /></Field>
           <Field label="Open electives per student"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minOpenElective} onChange={(e) => setS({ ...s, minOpenElective: Number(e.target.value) })} /></Field>
+          <Field label="Minimum credits per semester" hint="Class courses + baskets; below this the student stays pending"><input className="input" type="number" min={0} max={60} disabled={!manage} value={s.minCredits ?? 0} onChange={(e) => setS({ ...s, minCredits: Number(e.target.value) })} /></Field>
+          <Field label="Maximum credits per semester" hint="Students cannot exceed it; the office can"><input className="input" type="number" min={0} max={60} disabled={!manage} value={s.maxCredits ?? ''} placeholder="No limit" onChange={(e) => setS({ ...s, maxCredits: e.target.value ? Number(e.target.value) : undefined })} /></Field>
           <Field label="Last date to register"><input className="input" type="date" disabled={!manage} value={s.closes} onChange={(e) => setS({ ...s, closes: e.target.value })} /></Field>
           <Field label="Window"><label className="row gap"><input type="checkbox" disabled={!manage} checked={s.open} onChange={(e) => setS({ ...s, open: e.target.checked })} /> Open for students</label></Field>
         </div>
@@ -309,18 +331,20 @@ function RosterModal({ courseId, manage, onClose }: { courseId: string; manage: 
   const c = db.courses.find((x) => x.id === courseId)!
   const [add, setAdd] = useState('')
   const regOf = (sid: string) => db.registrations.find((r) => r.courseId === c.id && r.studentId === sid && r.status === 'REGISTERED')
-  const candidates = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE' && !c.studentIds.includes(u.id) && (c.classIds ?? []).includes(u.classId ?? ''))
+  // Any active student can be added by the office; those from an offered class are listed first.
+  const offered = (u: User) => (isPan(c) ? (c.classIds ?? []).includes(u.classId ?? '') : u.classId === c.classId)
+  const candidates = db.users.filter((u) => u.role === 'student' && u.status === 'ACTIVE' && !c.studentIds.includes(u.id)).sort((a, b) => Number(offered(b)) - Number(offered(a)) || a.name.localeCompare(b.name))
   const doAdd = () => {
     if (!add) return
     let err: string | null = null
-    update((d) => { err = registerCourse(d, c.id, add, me.id, seatsLeft(c) <= 0) })
+    update((d) => { err = registerCourse(d, c.id, add, me.id, true) })
     if (err) return alert(err)
     notify([add], `You were registered for ${c.code} ${c.name} by the Registrar of Evaluation`, '/registration')
     audit(me.id, 'COURSE_REGISTER', `${userName(db, add)} → ${c.code}`); setAdd('')
   }
   const drop = (sid: string) => {
     if (!confirm(`Drop ${userName(db, sid)} from ${c.code}?`)) return
-    update((d) => dropCourse(d, c.id, sid))
+    update((d) => dropCourse(d, c.id, sid, me.id))
     notify([sid], `You were dropped from ${c.code} ${c.name}`, '/registration')
     audit(me.id, 'COURSE_DROP', `${userName(db, sid)} ← ${c.code}`)
   }
@@ -329,10 +353,11 @@ function RosterModal({ courseId, manage, onClose }: { courseId: string; manage: 
     <Modal wide title={`${c.code} ${c.name}: students`} onClose={onClose}>
       <div className="row gap wrap"><KindBadge c={c} /><OfferedTo db={db} c={c} /><span className="small muted">{userName(db, c.facultyId)} · {c.credits} credits</span></div>
       <Seats c={c} />
-      {manage && isPan(c) && (
+      {manage && (
         <div className="row gap wrap">
-          <select className="select" style={{ maxWidth: 320 }} aria-label="Student to register" value={add} onChange={(e) => setAdd(e.target.value)}><option value="">Register a student…</option>{candidates.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.rollNo} · {classLabel(db.classes.find((x) => x.id === u.classId))}</option>)}</select>
+          <select className="select" style={{ maxWidth: 320 }} aria-label="Student to register" value={add} onChange={(e) => setAdd(e.target.value)}><option value="">Register a student…</option>{candidates.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.rollNo} · {classLabel(db.classes.find((x) => x.id === u.classId))}{offered(u) ? '' : ' (not an offered class)'}</option>)}</select>
           <button className="btn btn-sm" disabled={!add} onClick={doAdd}>{seatsLeft(c) <= 0 ? 'Register (over capacity)' : 'Register'}</button>
+          <span className="small muted">The office can add or drop any student at any time, including after the window closes.</span>
         </div>
       )}
       {c.studentIds.length === 0 ? <Empty text={isPan(c) ? 'No students registered yet.' : 'The roster fills when the class reaches this semester.'} /> : (
@@ -342,8 +367,8 @@ function RosterModal({ courseId, manage, onClose }: { courseId: string; manage: 
             <tr key={sid}>
               <td>{u?.name}<div className="small muted">{u?.rollNo}</div></td>
               <td className="small">{classLabel(db.classes.find((x) => x.id === u?.classId))}</td>
-              <td className="small">{r ? `${fmtDate(r.at)} · ${r.by === sid ? 'by student' : `by ${userName(db, r.by)}`}` : 'With the class'}</td>
-              <td>{manage && isPan(c) && <button className="btn btn-ghost btn-sm" onClick={() => drop(sid)}>Drop</button>}</td>
+              <td className="small">{r ? `${fmtDate(r.at)} · ${r.by === sid ? 'by student' : `by ${userName(db, r.by)}`}` : 'With the class'}{(c.extraIds ?? []).includes(sid) && <> <Badge tone="info">Added by office</Badge></>}</td>
+              <td>{manage && <button className="btn btn-ghost btn-sm" onClick={() => drop(sid)}>Drop</button>}</td>
             </tr>
           ) })}</tbody>
         </table></div>
@@ -374,13 +399,13 @@ function RegistrationChooser({ student, actor, canChange }: { student: User; act
   const mine = (k: 'FOUNDATION' | 'OPEN_ELECTIVE') => (k === 'FOUNDATION' ? st.foundation : st.open)
   const reg = (c: Course) => {
     let err: string | null = null
-    update((d) => { err = registerCourse(d, c.id, student.id, me.id, actor === 'office' && seatsLeft(c) <= 0) })
+    update((d) => { err = registerCourse(d, c.id, student.id, me.id, actor === 'office') })
     if (err) return alert(err)
     if (actor === 'office') notify([student.id], `You were registered for ${c.code} ${c.name} by the Registrar of Evaluation`, '/registration')
     audit(me.id, 'COURSE_REGISTER', `${student.name} → ${c.code}`)
   }
   const drop = (c: Course) => {
-    update((d) => dropCourse(d, c.id, student.id))
+    update((d) => dropCourse(d, c.id, student.id, me.id))
     if (actor === 'office') notify([student.id], `You were dropped from ${c.code} ${c.name}`, '/registration')
     audit(me.id, 'COURSE_DROP', `${student.name} ← ${c.code}`)
   }
@@ -388,11 +413,12 @@ function RegistrationChooser({ student, actor, canChange }: { student: User; act
     <div className="stack">
       <div className="row gap wrap">
         <Badge tone={st.complete ? 'success' : 'warning'}>{st.complete ? 'Registration complete' : 'Registration pending'}</Badge>
-        <span className="small muted">Semester {st.nextSem} · {st.credits} credits registered</span>
+        <Badge tone={st.overMax ? 'danger' : st.creditsOk ? 'success' : 'warning'}>{st.credits} credits{st.minCredits ? ` · min ${st.minCredits}` : ''}{st.maxCredits ? ` · max ${st.maxCredits}` : ''}</Badge>
+        <span className="small muted">Semester {st.nextSem}</span>
       </div>
       <Card title={`Class courses · Semester ${st.nextSem}`} action={<span className="small muted">Registered with the class</span>}>
         {st.core.length === 0 ? <Empty text="The Registrar of Evaluation has not set up this semester's class courses yet." /> : (
-          <div className="list">{st.core.map((c) => <div key={c.id} className="list-item"><div className="grow"><strong>{c.code}</strong> {c.name}<div className="small muted">{userName(db, c.facultyId)} · {c.credits} credits</div></div><Badge tone="brand">Class course</Badge></div>)}</div>
+          <div className="list">{st.core.map((c) => <div key={c.id} className="list-item"><div className="grow"><strong>{c.code}</strong> {c.name}<div className="small muted">{userName(db, c.facultyId)} · {c.credits} credits</div></div><Badge tone="brand">{(c.extraIds ?? []).includes(student.id) ? 'Added by office' : 'Class course'}</Badge>{actor === 'office' && canChange && <button className="btn btn-ghost btn-sm" onClick={() => drop(c)}>Drop</button>}</div>)}</div>
         )}
       </Card>
       {(['FOUNDATION', 'OPEN_ELECTIVE'] as const).map((k) => {
@@ -422,7 +448,26 @@ function RegistrationChooser({ student, actor, canChange }: { student: User; act
           </Card>
         )
       })}
+      {actor === 'office' && canChange && <AddAnyCourse student={student} onAdd={reg} />}
     </div>
+  )
+}
+
+/** Office only: register the student in any other course (another class's course, a basket outside their class…). */
+function AddAnyCourse({ student, onAdd }: { student: User; onAdd: (c: Course) => void }) {
+  const db = useDB()
+  const [id, setId] = useState('')
+  const st = registrationStatus(db, student)
+  const taken = new Set([...st.core, ...st.foundation, ...st.open].map((c) => c.id))
+  const options = db.courses.filter((c) => !taken.has(c.id) && !c.studentIds.includes(student.id) && (isPan(c) ? c.term === db.registration.registrationTerm : (() => { const cl = db.classes.find((x) => x.id === c.classId); return !!cl && c.semester >= cl.semester })()))
+    .sort((a, b) => kindOf(a).localeCompare(kindOf(b)) || a.code.localeCompare(b.code))
+  return (
+    <Card title="Add another course" action={<span className="small muted">Office override: any class or basket</span>}>
+      <div className="row gap wrap">
+        <select className="select" style={{ maxWidth: 420 }} aria-label="Course to add" value={id} onChange={(e) => setId(e.target.value)}><option value="">Choose a course…</option>{options.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name} · {isPan(c) ? KIND_LABEL[kindOf(c)] : classLabel(db.classes.find((x) => x.id === c.classId)).replace(/Sem \d+/, `Sem ${c.semester}`)} · {c.credits} cr</option>)}</select>
+        <button className="btn btn-sm" disabled={!id} onClick={() => { const c = db.courses.find((x) => x.id === id); if (c) onAdd(c); setId('') }}>Register</button>
+      </div>
+    </Card>
   )
 }
 
@@ -439,7 +484,7 @@ function StudentRegistration() {
       <PageHeader title="Course Registration" subtitle={`Choose your foundation course and open elective for ${settings.registrationTerm}`} />
       <div className={`alert ${closed ? 'alert-warning' : 'alert-success'}`}>
         Registration for <strong>{settings.registrationTerm}</strong> is <strong>{closed ? 'closed' : 'open'}</strong>{settings.closesAt ? ` · last date ${fmtDate(settings.closesAt)}` : ''}.
-        {closed ? ' Contact the Registrar of Evaluation for changes.' : ` Take ${settings.minFoundation} foundation course and ${settings.minOpenElective} open elective. Seats are first come, first served.`}
+        {closed ? ' Contact the Registrar of Evaluation for changes.' : ` Take ${settings.minFoundation} foundation course and ${settings.minOpenElective} open elective${settings.minCredits ? `, at least ${settings.minCredits} credits in total` : ''}${settings.maxCredits ? ` (at most ${settings.maxCredits})` : ''}. Seats are first come, first served.`}
       </div>
       <RegistrationChooser student={me} actor="student" canChange={!closed} />
       <Card title="My registration history">

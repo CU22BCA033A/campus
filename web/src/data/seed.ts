@@ -118,7 +118,7 @@ const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3'
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 11,
+    version: 12,
     registrations: [],
     registration: { currentTerm: '', registrationTerm: '', open: false, minFoundation: 1, minOpenElective: 1 },
     examSessions: [],
@@ -274,13 +274,32 @@ export function createSeed(): DB {
       { id: 'pl2', question: 'Should the canteen add a late-evening menu?', options: ['Yes', 'No', 'Only during exams'], votes: { s5: 0, s6: 2, f1: 0 }, createdBy: 'a2', closesAt: d(7) },
     ],
     routes: [
-      { id: 'r1', name: 'Route 1 – Hebbal', bus: 'KA-01-F-4521', driver: 'Ramesh K', driverPhone: '9845012345', subscribers: ['s6', 's14'], stops: [{ name: 'Hebbal Flyover', time: '07:15' }, { name: 'Yelahanka New Town', time: '07:35' }, { name: 'Airport Road Toll', time: '07:55' }, { name: 'Campus', time: '08:25' }] },
-      { id: 'r2', name: 'Route 2 – Majestic', bus: 'KA-01-F-7783', driver: 'Suresh M', driverPhone: '9845067890', subscribers: ['s9'], stops: [{ name: 'Majestic', time: '06:50' }, { name: 'Mekhri Circle', time: '07:15' }, { name: 'Jakkur', time: '07:40' }, { name: 'Campus', time: '08:20' }] },
-      { id: 'r3', name: 'Route 3 – Whitefield', bus: 'KA-53-F-1209', driver: 'Manjunath R', driverPhone: '9845011122', subscribers: [], stops: [{ name: 'ITPL', time: '06:40' }, { name: 'KR Puram', time: '07:05' }, { name: 'Hennur', time: '07:35' }, { name: 'Campus', time: '08:25' }] },
+      { id: 'r1', name: 'Route 1 – Hebbal', bus: 'KA-01-F-4521', driver: 'Ramesh K', driverPhone: '9845012345', capacity: 40, feePerSem: 18000, returnTime: '16:45', active: true, subscribers: ['s6', 's14'], stopOf: { s6: 'Hebbal Flyover', s14: 'Yelahanka New Town' }, stops: [{ name: 'Hebbal Flyover', time: '07:15' }, { name: 'Yelahanka New Town', time: '07:35' }, { name: 'Airport Road Toll', time: '07:55' }, { name: 'Campus', time: '08:25' }] },
+      { id: 'r2', name: 'Route 2 – Majestic', bus: 'KA-01-F-7783', driver: 'Suresh M', driverPhone: '9845067890', capacity: 40, feePerSem: 20000, returnTime: '16:45', active: true, subscribers: ['s9'], stopOf: { s9: 'Mekhri Circle' }, stops: [{ name: 'Majestic', time: '06:50' }, { name: 'Mekhri Circle', time: '07:15' }, { name: 'Jakkur', time: '07:40' }, { name: 'Campus', time: '08:20' }] },
+      { id: 'r3', name: 'Route 3 – Whitefield', bus: 'KA-53-F-1209', driver: 'Manjunath R', driverPhone: '9845011122', capacity: 32, feePerSem: 22000, returnTime: '17:00', active: true, subscribers: [], stopOf: {}, stops: [{ name: 'ITPL', time: '06:40' }, { name: 'KR Puram', time: '07:05' }, { name: 'Hennur', time: '07:35' }, { name: 'Campus', time: '08:25' }] },
+    ],
+    transportRequests: [
+      { id: 'tr1', userId: 's6', routeId: 'r1', stop: 'Hebbal Flyover', status: 'APPROVED', at: d(-60), decidedBy: 'a15' },
+      { id: 'tr2', userId: 's14', routeId: 'r1', stop: 'Yelahanka New Town', status: 'APPROVED', at: d(-58), decidedBy: 'a15' },
+      { id: 'tr3', userId: 's9', routeId: 'r2', stop: 'Mekhri Circle', status: 'APPROVED', at: d(-55), decidedBy: 'a15' },
+      { id: 'tr4', userId: 's10', routeId: 'r3', stop: 'KR Puram', status: 'PENDING', at: d(-1) },
+      { id: 'tr5', userId: 'f3', routeId: 'r2', stop: 'Jakkur', status: 'PENDING', at: d(-0.5) },
     ],
     feedback: [],
+    venues: [
+      { id: 'v-aud', name: 'Main Auditorium', kind: 'Auditorium', capacity: 800, location: 'Admin Block, ground floor', amenities: 'Stage, sound system, projector, green room', managerId: 'a14', needsApproval: true, opens: '08:00', closes: '21:00', active: true },
+      { id: 'v-sha', name: 'Seminar Hall A', kind: 'Seminar hall', capacity: 150, location: 'Block B, 1st floor', amenities: 'Projector, podium mic', managerId: 'a14', needsApproval: true, opens: '08:00', closes: '19:00', active: true },
+      { id: 'v-shb', name: 'Seminar Hall B', kind: 'Seminar hall', capacity: 100, location: 'Block B, 2nd floor', amenities: 'Smart board', managerId: 'a14', needsApproval: false, opens: '08:00', closes: '19:00', active: true },
+      { id: 'v-conf', name: 'Conference Room', kind: 'Conference room', capacity: 20, location: 'Admin Block, 2nd floor', amenities: 'Video conferencing', managerId: 'a2', needsApproval: false, opens: '09:00', closes: '18:00', active: true },
+      { id: 'v-lab3', name: 'Lab-3 (Computer lab)', kind: 'Lab', capacity: 60, location: 'Block A, 3rd floor', amenities: '60 desktops', managerId: 'f2', needsApproval: true, opens: '08:00', closes: '18:00', active: true },
+      { id: 'v-ground', name: 'Sports Ground', kind: 'Sports', capacity: 500, location: 'East campus', amenities: 'Floodlights', managerId: 'a9', needsApproval: true, opens: '06:00', closes: '20:00', active: true },
+    ],
+    ticketRouting: { 'IT Support': 'a1', 'Facility Booking': 'a14', Maintenance: 'a14', Grievance: 'a9', 'Bonafide Certificate': 'a2', 'No-Dues Certificate': 'a3' },
     bookings: [
-      { id: 'b1', venue: 'Seminar Hall A', date: iso(4), slot: '14:00–16:00', purpose: 'Guest lecture', bookedBy: 'f1' },
+      { id: 'b1', venueId: 'v-sha', date: iso(4), start: '14:00', end: '16:00', purpose: 'Guest lecture: Cloud Native Architecture', attendees: 120, bookedBy: 'f1', status: 'CONFIRMED', decidedBy: 'a14', createdAt: d(-3) },
+      { id: 'b2', venueId: 'v-aud', date: iso(15), start: '16:00', end: '21:00', purpose: 'Cultural Fest – Utsav (Cultural Committee)', attendees: 700, bookedBy: 'a9', status: 'CONFIRMED', decidedBy: 'a14', createdAt: d(-10) },
+      { id: 'b3', venueId: 'v-aud', date: iso(6), start: '10:00', end: '13:00', purpose: 'Coding Club hackathon kick-off', attendees: 250, bookedBy: 's1', status: 'PENDING', createdAt: d(-0.5) },
+      { id: 'b4', venueId: 'v-lab3', date: iso(2), start: '15:00', end: '17:00', purpose: 'Extra DBMS lab', attendees: 40, bookedBy: 'f2', status: 'CONFIRMED', decidedBy: 'f2', createdAt: d(-1) },
     ],
     notifications: [
       { id: 'nt1', userId: 's1', text: 'New assignment posted in Web Technologies', link: '/assignments', createdAt: d(-1), read: false },

@@ -6,9 +6,10 @@ import { wardensFor } from '../hostels'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { resyncRosters } from '../classes'
 import { fmtDate, inr, timeAgo, matches } from '../lib'
-import { officeUsers } from '../access'
+import { can, officeUsers } from '../access'
 import type { Application, AppStage, DB } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 export const PROGRAMS: Record<string, { fee: number; code: string }> = {
   BCA: { fee: 75000, code: 'BCA' },
@@ -46,6 +47,7 @@ export default function Admissions() {
   const db = useDB()
   const user = useCurrentUser()!
   const [stage, setStage] = useState<AppStage>('APPLIED')
+  const [editApp, setEditApp] = useState<DB['applications'][number] | null>(null)
   const [open, setOpen] = useState<Application | null>(null)
   const [importing, setImporting] = useState(false)
   const [csv, setCsv] = useState('')
@@ -164,7 +166,7 @@ export default function Admissions() {
                     <td>{a.program}</td><td>{a.qualifyingPct}</td><td>{a.entranceScore}</td>
                     <td>{a.meritScore ?? <span className="muted">{merit(a)}*</span>}</td>
                     <td className="small muted">{timeAgo(a.history[a.history.length - 1].at)}</td>
-                    <td><button className="btn btn-outline btn-sm" onClick={() => setOpen(a)}>Open</button></td>
+                    <td className="row gap"><button className="btn btn-outline btn-sm" onClick={() => setOpen(a)}>Open</button>{can(user, 'manageAdmissions') && <RowActions label={a.name} onEdit={() => setEditApp(a)} onDelete={() => deleteRecord('applications', a.id, `${a.name}'s application`, user.id)} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -231,6 +233,7 @@ export default function Admissions() {
           <input type="file" accept=".csv,text/csv" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCsv(await f.text()) }} />
         </Modal>
       )}
+      {editApp && <RecordEditor title={`Edit application: ${editApp.name}`} collection="applications" record={editApp} actorId={user.id} onClose={() => setEditApp(null)} fields={[{ key: 'name', label: 'Name', required: true }, { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' }, { key: 'program', label: 'Programme' }, { key: 'category', label: 'Category', type: 'select', options: ['General', 'OBC', 'SC', 'ST', 'EWS'].map((x) => ({ value: x, label: x })) }, { key: 'qualifyingPct', label: '12th %', type: 'number' }, { key: 'entranceScore', label: 'Entrance score', type: 'number' }, { key: 'meritScore', label: 'Merit score', type: 'number', hint: 'Leave empty to compute' }]} />}
     </>
   )
 }

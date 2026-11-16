@@ -1,5 +1,5 @@
 export type Role = 'student' | 'faculty' | 'admin' | 'parent'
-export type Office = 'super' | 'registrar' | 'admissions' | 'exam' | 'finance' | 'hostel' | 'hr' | 'library' | 'placement' | 'studentAffairs'
+export type Office = 'super' | 'registrar' | 'admissions' | 'exam' | 'finance' | 'hostel' | 'hr' | 'library' | 'placement' | 'studentAffairs' | 'transport' | 'facilities'
 export type AccountStatus = 'ACTIVE' | 'DEACTIVATED' | 'LOCKED'
 
 export interface User {
@@ -27,7 +27,9 @@ export interface User {
   priorRecord?: { cgpa: number; credits: number; backlogs: number; semesters: number } // semesters completed before the portal (Registrar of Evaluation)
   hostelId?: string // hostel-office staff: the hostel they are warden of (none = chief warden, all hostels)
   office?: Office // admin accounts: the office they work in (defaults to 'super')
-  wardIds?: string[] // parent accounts: children at this institution
+  wardIds?: string[]
+  resumeUrl?: string // placement profile
+  skills?: string // parent accounts: children at this institution
   cgpa?: number // legacy: use cgpaOf()
   backlogs?: number // legacy: use backlogCountOf()
   basicSalary?: number // staff: monthly basic pay (INR)
@@ -48,6 +50,8 @@ export interface Course {
   slots?: number // seats; pan-university courses close when full
   classIds?: string[] // pan-university courses: classes whose students may opt for it
   term?: string // pan-university courses run in one academic term (e.g. "Odd 2026-27")
+  extraIds?: string[] // class courses: students added by the Registrar of Evaluation from outside the class
+  droppedIds?: string[] // class courses: class students the Registrar of Evaluation removed
 }
 
 /** Class (core) courses belong to one class; foundation and open-elective courses are pan-university baskets. */
@@ -74,6 +78,8 @@ export interface RegistrationSettings {
   closesAt?: number
   minFoundation: number // courses each student must take from each basket
   minOpenElective: number
+  minCredits?: number // credits a student must register for in a semester
+  maxCredits?: number // and may not exceed (the office can override)
 }
 
 /** A class: one programme, admission batch and section, currently in `semester`. */
@@ -105,9 +111,12 @@ export interface Assignment {
   dueAt: number
   maxMarks: number // equals the sum of part marks when `parts` is set
   parts?: AssignmentPart[] // how students answer; absent = classic single answer (text and/or file)
+  proctored?: boolean // full screen; tab / window switches are warned, the 3rd closes the attempt
+  onlyFor?: string[] // only these students (e.g. a make-up for absentees)
+  makeupOf?: string // make-up of this assignment: its marks count for the original
 }
 
-export type PartType = 'text' | 'link' | 'file' | 'mcq' | 'msq'
+export type PartType = 'text' | 'link' | 'file' | 'mcq' | 'msq' | 'blank'
 export type FileKind = 'pdf' | 'doc' | 'slides' | 'sheet' | 'image' | 'zip' | 'any'
 export interface AssignmentPart {
   id: string
@@ -117,6 +126,7 @@ export interface AssignmentPart {
   required: boolean
   options?: string[] // mcq / msq
   correct?: number[] // mcq / msq: indexes of correct options
+  accepted?: string[] // blank: every accepted answer (case and spacing ignored)
   accept?: FileKind[] // file: allowed formats
 }
 export interface PartAnswer {
@@ -142,13 +152,21 @@ export interface Submission {
   gradedAt?: number
   marks?: number
   feedback?: string
+  violations?: number // proctoring: times the student left the screen
+  terminated?: boolean // closed automatically after the 3rd violation
 }
 
+export type QuestionType = 'mcq' | 'msq' | 'tf' | 'blank'
 export interface QuizQuestion {
   q: string
+  type?: QuestionType // default mcq
   options: string[]
-  answer: number
+  answer: number // mcq / tf: correct option
+  answers?: number[] // msq: all correct options
+  accepted?: string[] // blank: every accepted answer
+  marks?: number // default 1
 }
+export type QuizAnswer = number | number[] | string
 
 export interface Quiz {
   id: string
@@ -159,15 +177,22 @@ export interface Quiz {
   closesAt: number
   questions: QuizQuestion[]
   publishScores: boolean
+  proctored?: boolean // default true for tests
+  onlyFor?: string[] // only these students (make-up / re-test)
+  makeupOf?: string // make-up of this quiz: its marks count for the original
 }
 
 export interface QuizAttempt {
   id: string
   quizId: string
   studentId: string
-  answers: number[]
+  answers: QuizAnswer[]
   score: number
+  maxScore?: number
   submittedAt: number
+  violations?: number
+  terminated?: boolean // closed automatically after the 3rd violation
+  voided?: boolean // the teacher allowed a fresh attempt
 }
 
 export interface TimetableSlot {
@@ -267,11 +292,27 @@ export interface Poll {
 export interface TransportRoute {
   id: string
   name: string
-  stops: { name: string; time: string }[]
+  stops: { name: string; time: string }[] // morning pick-up times; the last stop is the campus
   bus: string
   driver: string
   driverPhone: string
-  subscribers: string[]
+  subscribers: string[] // riders with a pass
+  capacity?: number
+  feePerSem?: number
+  returnTime?: string // evening departure from campus
+  stopOf?: Record<string, string> // rider → boarding stop
+  active?: boolean
+}
+/** A request for a bus pass; the Transport Department approves it and the fee is raised. */
+export interface TransportRequest {
+  id: string
+  userId: string
+  routeId: string
+  stop: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+  at: number
+  decidedBy?: string
+  note?: string
 }
 
 export interface Feedback {
@@ -283,13 +324,33 @@ export interface Feedback {
   createdAt: number
 }
 
+/** A bookable space; its manager gets every booking request (Estate & Facilities assigns managers). */
+export interface Venue {
+  id: string
+  name: string
+  kind: 'Auditorium' | 'Seminar hall' | 'Conference room' | 'Lab' | 'Sports' | 'Other'
+  capacity: number
+  location: string
+  amenities?: string
+  managerId?: string // person who receives and approves bookings
+  needsApproval: boolean // false = confirmed instantly
+  opens: string // "08:00"
+  closes: string // "20:00"
+  active: boolean
+}
 export interface Booking {
   id: string
-  venue: string
-  date: string
-  slot: string
+  venueId: string
+  date: string // YYYY-MM-DD
+  start: string // "14:00"
+  end: string
   purpose: string
+  attendees?: number
   bookedBy: string
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED'
+  decidedBy?: string
+  note?: string
+  createdAt: number
 }
 
 export interface Notification {
@@ -307,6 +368,11 @@ export interface DB {
   classes: ClassGroup[]
   courses: Course[]
   registrations: CourseRegistration[]
+  venues: Venue[]
+  companies: Company[]
+  placementPolicy: { oneOffer: boolean; dreamLpa: number } // placed students may only apply to dream offers (≥ dreamLpa)
+  librarySettings: LibrarySettings
+  ticketRouting: Partial<Record<Ticket['category'], string>> // default person per Help Center category
   registration: RegistrationSettings
   materials: Material[]
   assignments: Assignment[]
@@ -323,6 +389,7 @@ export interface DB {
   gatePasses: GatePass[]
   polls: Poll[]
   routes: TransportRoute[]
+  transportRequests: TransportRequest[]
   feedback: Feedback[]
   bookings: Booking[]
   notifications: Notification[]
@@ -422,6 +489,7 @@ export interface ExamSession {
   externalMax?: number
   minTotalMarks?: number // pass rules, in marks: final (internal + external) at least this…
   minExternalMarks?: number // …and the external exam at least this (out of externalMax)
+  ticketsIssuedAt?: number // hall tickets printed by the Registrar of Evaluation
   createdAt: number
 }
 export interface ExamResult {
@@ -561,17 +629,47 @@ export interface Ticket {
 }
 
 /* ---------------- Placements ---------------- */
+export interface Company {
+  id: string
+  name: string
+  industry: string
+  website?: string
+  location?: string
+  contactName?: string
+  contactEmail?: string
+  contactPhone?: string
+  notes?: string
+}
+export type AppStatus = 'APPLIED' | 'SHORTLISTED' | 'INTERVIEW' | 'SELECTED' | 'REJECTED' | 'WITHDRAWN'
+export interface DriveApplication {
+  studentId: string
+  status: AppStatus
+  slot?: number // interview time
+  round?: number // index into the drive's rounds the student has reached
+  appliedAt?: number
+  offerCtc?: number // LPA (or stipend / month for internships)
+  offer?: 'OFFERED' | 'ACCEPTED' | 'DECLINED'
+  note?: string
+}
 export interface PlacementDrive {
   id: string
   company: string
+  companyId?: string
   role: string
   kind: 'Internship' | 'Full-time' | 'Project' | 'Top-tier'
-  ctc: string
+  ctc: string // as advertised
+  ctcLpa?: number // for statistics and the one-offer policy
   minCgpa: number
   maxBacklogs: number
+  programs?: string[] // eligible programmes (empty = all)
+  batches?: number[] // eligible admission batches (empty = all)
+  rounds?: string[] // e.g. Aptitude test, Technical interview, HR interview
+  driveDate?: number
+  venue?: string
+  openings?: number
   deadline: number
   description: string
-  applications: { studentId: string; status: 'APPLIED' | 'SHORTLISTED' | 'INTERVIEW' | 'SELECTED' | 'REJECTED'; slot?: number }[]
+  applications: DriveApplication[]
 }
 
 /* ---------------- Library ---------------- */
@@ -581,19 +679,43 @@ export interface Book {
   author: string
   isbn: string
   subject: string
-  copies: number
+  copies: number // copies owned (accession numbers <id>-01 … <id>-NN)
+  lostCopies?: number // written off as lost or damaged
   shelf: string
+  publisher?: string
+  edition?: string
+  year?: number
+  price?: number
   ebookUrl?: string
   reservations: string[]
+  addedAt?: number
 }
 export interface BookLoan {
   id: string
   bookId: string
   userId: string
+  accession?: string // which copy
   issuedAt: number
   dueAt: number
+  issuedBy?: string
   returnedAt?: number
-  fine?: number
+  returnedBy?: string
+  renewals?: number
+  fine?: number // set at return: overdue days × fine per day
+  finePaid?: number
+  finePaidAt?: number
+  receiptNo?: string
+  fineWaived?: boolean
+  waivedBy?: string
+  waiveReason?: string
+}
+/** Circulation rules, set by the Library. */
+export interface LibrarySettings {
+  loanDays: number
+  finePerDay: number
+  maxLoansStudent: number
+  maxLoansStaff: number
+  maxRenewals: number
 }
 
 /* ---------------- Alumni ---------------- */
@@ -644,15 +766,17 @@ export interface ServiceOffering {
   slots: { day: number; start: string }[] // weekly availability (1 = Mon … 6 = Sat)
   maxPerSlot: number
   confidential: boolean // e.g. counselling: details visible only to the handling office
+  assigneeIds?: string[] // people who take the bookings (e.g. the counsellor); they get every request with the slot
   active: boolean
   createdBy: string
 }
 export interface Appointment {
   id: string
   serviceId: string
-  studentId: string
+  studentId: string // the person who booked (student, faculty or staff)
   at: number
   reason: string
+  assignedTo?: string // the handler taking this booking
   status: 'REQUESTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'DECLINED'
   note?: string // message from the office (e.g. meeting link or room)
   createdAt: number

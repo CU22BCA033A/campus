@@ -4,9 +4,10 @@ import { audit, notify, uid, update, useCurrentUser, useDB } from '../data/store
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { computePayslip, fmtDate, inr, userName, matches } from '../lib'
 import { can, officeUsers } from '../access'
-import type { Payslip, StaffLeave } from '../data/types'
+import type { DB, Payslip, StaffLeave } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { officeLabel } from '../facets'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 const QUOTA: Record<StaffLeave['type'], number> = { Casual: 12, Sick: 10, Earned: 15, Duty: 30, 'Loss of Pay': 365 }
 const days = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1)
@@ -22,6 +23,7 @@ export default function HR() {
   const canApprove = can(user, 'approveStaffLeave')
   const canPayroll = can(user, 'runPayroll')
   const [tab, setTab] = useState<'leave' | 'payslips' | 'approvals' | 'payroll'>(canApprove ? 'approvals' : canPayroll ? 'payroll' : 'leave')
+  const [editL, setEditL] = useState<DB['leaves'][number] | null>(null)
   const [applying, setApplying] = useState(false)
   const [draft, setDraft] = useState<{ type: StaffLeave['type']; from: string; to: string; reason: string }>({ type: 'Casual', from: '', to: '', reason: '' })
   const [slip, setSlip] = useState<{ p: Payslip; month: string } | null>(null)
@@ -103,7 +105,7 @@ export default function HR() {
             {db.leaves.filter((l) => staffOk(l.staffId) && hf.ok('type', l.type) && hf.ok('status', l.status) && matches(term, userName(db, l.staffId), l.type, l.reason, l.status)).sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING')).map((l) => (
               <tr key={l.id}><td>{userName(db, l.staffId)}</td><td>{l.type}</td><td>{fmtDate(l.from)} – {fmtDate(l.to)}</td><td>{l.days}</td><td>{l.reason}</td>
                 <td><Badge tone={l.status === 'APPROVED' ? 'success' : l.status === 'PENDING' ? 'warning' : 'danger'}>{l.status}</Badge></td>
-                <td>{l.status === 'PENDING' && l.staffId !== user.id && <div className="row gap"><button className="btn btn-success btn-sm" onClick={() => review(l, 'APPROVED')}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => review(l, 'REJECTED')}>Decline</button></div>}</td></tr>
+                <td><div className="row gap">{l.status === 'PENDING' && l.staffId !== user.id && <><button className="btn btn-success btn-sm" onClick={() => review(l, 'APPROVED')}>Approve</button><button className="btn btn-danger btn-sm" onClick={() => review(l, 'REJECTED')}>Decline</button></>}<RowActions label="leave" onEdit={() => setEditL(l)} onDelete={() => deleteRecord('leaves', l.id, `${userName(db, l.staffId)}'s leave`, user.id)} /></div></td></tr>
             ))}
           </tbody></table>
         </Card>
@@ -153,6 +155,7 @@ export default function HR() {
           <div className="alert alert-success row between"><span>Net pay</span><strong>{inr(slip.p.net)}</strong></div>
         </Modal>
       )}
+      {editL && <RecordEditor title={`Edit leave · ${userName(db, editL.staffId)}`} collection="leaves" record={editL} actorId={user.id} onClose={() => setEditL(null)} fields={[{ key: 'type', label: 'Type', type: 'select', options: ['Casual', 'Sick', 'Earned', 'Loss of Pay', 'Duty'].map((x) => ({ value: x, label: x })) }, { key: 'status', label: 'Status', type: 'select', options: ['PENDING', 'APPROVED', 'REJECTED'].map((x) => ({ value: x, label: x[0] + x.slice(1).toLowerCase() })) }, { key: 'from', label: 'From (YYYY-MM-DD)', required: true }, { key: 'to', label: 'To (YYYY-MM-DD)', required: true }, { key: 'days', label: 'Days', type: 'number' }, { key: 'reason', label: 'Reason', type: 'textarea' }]} />}
     </>
   )
 }

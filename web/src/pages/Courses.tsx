@@ -7,9 +7,10 @@ import { attendanceStats, coursesFor, fmtDate, userName, matches } from '../lib'
 import { Discussion } from './Feed'
 import { can } from '../access'
 import { classLabel } from '../classes'
-import type { Material } from '../data/types'
+import type { DB, Material } from '../data/types'
 import { FilterBar, opts, useFilters } from '../components/Filters'
 import { isPan, KIND_LABEL } from '../registration'
+import { deleteRecord, RecordEditor, RowActions } from '../components/RecordEditor'
 
 export function Courses() {
   const db = useDB()
@@ -67,6 +68,7 @@ export function CourseDetail() {
   const user = useCurrentUser()!
   const course = db.courses.find((c) => c.id === id)
   const [tab, setTab] = useState<'overview' | 'materials' | 'work' | 'discussion' | 'students'>('overview')
+  const [editM, setEditM] = useState<DB['materials'][number] | null>(null)
   const [adding, setAdding] = useState(false)
   const [m, setM] = useState<Pick<Material, 'title' | 'kind' | 'url'>>({ title: '', kind: 'pdf', url: '' })
 
@@ -118,6 +120,7 @@ export function CourseDetail() {
                     <span className="stat-icon" style={{ background: 'var(--brand-light)', color: 'var(--brand)', width: 36, height: 36, display: 'grid', placeItems: 'center', borderRadius: 8 }}><I size={18} /></span>
                     <div className="grow"><div style={{ fontWeight: 600 }}>{x.title}</div><div className="small muted">{x.kind.toUpperCase()} · {fmtDate(x.postedAt)}</div></div>
                     <a className="btn btn-outline btn-sm" href={x.url} onClick={(e) => x.url === '#' && (e.preventDefault(), alert('Demo file: no download available.'))}>Open</a>
+                    {(user.id === course.facultyId || can(user, 'manageCourses')) && <RowActions label={x.title} onEdit={() => setEditM(x)} onDelete={() => deleteRecord('materials', x.id, x.title, user.id)} />}
                   </div>
                 )
               })}
@@ -174,6 +177,7 @@ export function CourseDetail() {
           <Field label="URL" hint="Link to the file or video"><input className="input" value={m.url} onChange={(e) => setM({ ...m, url: e.target.value })} placeholder="https://" /></Field>
         </Modal>
       )}
+      {editM && <RecordEditor title="Edit material" collection="materials" record={editM} actorId={user.id} onClose={() => setEditM(null)} fields={[{ key: 'title', label: 'Title', required: true }, { key: 'kind', label: 'Type', type: 'select', options: ['pdf', 'video', 'link', 'slides'].map((k) => ({ value: k, label: k.toUpperCase() })) }, { key: 'url', label: 'Link / URL' }]} />}
     </>
   )
 }
