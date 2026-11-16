@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, Download, Lock, Pencil, Plus, Send, Trash2, Unlock, Users } from 'lucide-react'
+import { ClipboardCheck, Clock, Download, Lock, Pencil, Plus, Send, Trash2, Unlock, Users } from 'lucide-react'
 import { audit, getDB, notify, uid, update, useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Field, Modal, PageHeader, Stat, Tabs } from '../components/ui'
 import { FilterBar, opts, useFilters } from '../components/Filters'
@@ -8,7 +8,7 @@ import { STUDENT_KEYS, studentDefs, studentOk } from '../facets'
 import { can } from '../access'
 import { classColor, classLabel, resyncRosters } from '../classes'
 import { fmtDate, matches, userName } from '../lib'
-import { dropCourse, eligibleCourses, isPan, KIND_LABEL, kindOf, registerCourse, registrationStatus, seatsLeft } from '../registration'
+import { dropCourse, eligibleCourses, isPan, KIND_LABEL, kindOf, registerCourse, registrationStatus, seatsLeft, sessionState, timeLimitMin } from '../registration'
 import type { Course, CourseKind, DB, User } from '../data/types'
 
 export default function Registration() {
@@ -175,7 +175,7 @@ function RegistrationOffice() {
           </div>
           <Card>
             <div className="table-wrap"><table>
-              <thead><tr><th>Student</th><th>Class</th><th>Class courses (Sem)</th><th>Foundation</th><th>Open elective</th><th>Credits</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Student</th><th>Class</th><th>Class courses (Sem)</th><th>Foundation</th><th>Open elective</th><th>Credits</th><th>Timer</th><th>Status</th><th /></tr></thead>
               <tbody>{shownStudents.map(({ s, st }) => (
                 <tr key={s.id}>
                   <td><Link to={`/people/${s.id}`}>{s.name}</Link><div className="small muted">{s.rollNo}</div></td>
@@ -184,6 +184,7 @@ function RegistrationOffice() {
                   <td>{st.foundation.length ? st.foundation.map((c) => <Badge key={c.id} tone="info">{c.code}</Badge>) : <span className="muted small">—</span>}</td>
                   <td>{st.open.length ? st.open.map((c) => <Badge key={c.id} tone="accent">{c.code}</Badge>) : <span className="muted small">—</span>}</td>
                   <td>{st.credits}</td>
+                  <td className="small">{(() => { const x = sessionState(db, s.id); return x.state === 'none' ? <span className="muted">Not started</span> : x.state === 'active' ? <Badge tone="info">{Math.ceil(x.left / 60000)} min left</Badge> : x.state === 'submitted' ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Time up</Badge> })()}</td>
                   <td><Badge tone={st.complete ? 'success' : 'warning'}>{st.complete ? 'Complete' : 'Pending'}</Badge></td>
                   <td><button className="btn btn-outline btn-sm" onClick={() => setManaging(s.id)}>{manage ? 'Manage' : 'View'}</button></td>
                 </tr>
@@ -210,8 +211,8 @@ function SettingsPanel({ manage }: { manage: boolean }) {
   const [s, setS] = useState({ ...db.registration, closes: db.registration.closesAt ? new Date(db.registration.closesAt).toISOString().slice(0, 10) : '' })
   const save = () => {
     if (!s.registrationTerm.trim() || !s.currentTerm.trim()) return alert('Name both terms.')
-    update((d) => { d.registration = { currentTerm: s.currentTerm.trim(), registrationTerm: s.registrationTerm.trim(), open: s.open, closesAt: s.closes ? new Date(`${s.closes}T23:59`).getTime() : undefined, minFoundation: s.minFoundation, minOpenElective: s.minOpenElective, minCredits: s.minCredits || undefined, maxCredits: s.maxCredits } })
-    audit(me.id, 'REGISTRATION_SETTINGS', `${s.registrationTerm}: ${s.minFoundation} foundation, ${s.minOpenElective} open elective`)
+    update((d) => { d.registration = { currentTerm: s.currentTerm.trim(), registrationTerm: s.registrationTerm.trim(), open: s.open, closesAt: s.closes ? new Date(`${s.closes}T23:59`).getTime() : undefined, minFoundation: s.minFoundation, minOpenElective: s.minOpenElective, minCredits: s.minCredits || undefined, maxCredits: s.maxCredits, basketLimits: s.basketLimits, timeLimitMin: s.timeLimitMin || 15, sessions: d.registration.sessions } })
+    audit(me.id, 'REGISTRATION_SETTINGS', `${s.registrationTerm}: ${s.minFoundation} foundation, ${s.minOpenElective} open elective, ${s.timeLimitMin ?? 15} min`)
     alert('Registration settings saved.')
   }
   const startTerm = () => {
@@ -227,13 +228,25 @@ function SettingsPanel({ manage }: { manage: boolean }) {
         <div className="grid grid-2">
           <Field label="Term running now" hint="Its foundation / open-elective courses are live"><input className="input" disabled={!manage} value={s.currentTerm} onChange={(e) => setS({ ...s, currentTerm: e.target.value })} /></Field>
           <Field label="Registering for" hint="Usually the next term; same as above for a late window"><input className="input" disabled={!manage} value={s.registrationTerm} onChange={(e) => setS({ ...s, registrationTerm: e.target.value })} /></Field>
-          <Field label="Foundation courses per student"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minFoundation} onChange={(e) => setS({ ...s, minFoundation: Number(e.target.value) })} /></Field>
-          <Field label="Open electives per student"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minOpenElective} onChange={(e) => setS({ ...s, minOpenElective: Number(e.target.value) })} /></Field>
+          <Field label="Time to register (minutes)" hint="Starts when the student clicks Register the first time"><input className="input" type="number" min={1} max={120} disabled={!manage} value={s.timeLimitMin ?? 15} onChange={(e) => setS({ ...s, timeLimitMin: Number(e.target.value) })} /></Field>
+          <Field label="Foundation courses per student (default)"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minFoundation} onChange={(e) => setS({ ...s, minFoundation: Number(e.target.value) })} /></Field>
+          <Field label="Open electives per student (default)"><input className="input" type="number" min={0} max={3} disabled={!manage} value={s.minOpenElective} onChange={(e) => setS({ ...s, minOpenElective: Number(e.target.value) })} /></Field>
           <Field label="Minimum credits per semester" hint="Class courses + baskets; below this the student stays pending"><input className="input" type="number" min={0} max={60} disabled={!manage} value={s.minCredits ?? 0} onChange={(e) => setS({ ...s, minCredits: Number(e.target.value) })} /></Field>
           <Field label="Maximum credits per semester" hint="Students cannot exceed it; the office can"><input className="input" type="number" min={0} max={60} disabled={!manage} value={s.maxCredits ?? ''} placeholder="No limit" onChange={(e) => setS({ ...s, maxCredits: e.target.value ? Number(e.target.value) : undefined })} /></Field>
           <Field label="Last date to register"><input className="input" type="date" disabled={!manage} value={s.closes} onChange={(e) => setS({ ...s, closes: e.target.value })} /></Field>
           <Field label="Window"><label className="row gap"><input type="checkbox" disabled={!manage} checked={s.open} onChange={(e) => setS({ ...s, open: e.target.checked })} /> Open for students</label></Field>
         </div>
+        <Field label="Courses to choose in each basket, by class" hint="Empty = the default above. A student must choose exactly this many and cannot choose more.">
+          <div className="table-wrap"><table>
+            <thead><tr><th>Class</th><th>Foundation</th><th>Open elective</th></tr></thead>
+            <tbody>{db.classes.map((c) => { const lim = s.basketLimits?.[c.id]; const setLim = (k: 'FOUNDATION' | 'OPEN_ELECTIVE', v: string) => { const cur = { FOUNDATION: lim?.FOUNDATION ?? s.minFoundation, OPEN_ELECTIVE: lim?.OPEN_ELECTIVE ?? s.minOpenElective, [k]: v === '' ? (k === 'FOUNDATION' ? s.minFoundation : s.minOpenElective) : Number(v) }; setS({ ...s, basketLimits: { ...s.basketLimits, [c.id]: cur } }) }; return (
+              <tr key={c.id}>
+                <td className="small">{classLabel(c)}</td>
+                {(['FOUNDATION', 'OPEN_ELECTIVE'] as const).map((k) => <td key={k}><input className="input" type="number" min={0} max={5} style={{ width: 80 }} aria-label={`${classLabel(c)} ${KIND_LABEL[k]} limit`} disabled={!manage} value={lim?.[k] ?? ''} placeholder={String(k === 'FOUNDATION' ? s.minFoundation : s.minOpenElective)} onChange={(e) => setLim(k, e.target.value)} /></td>)}
+              </tr>
+            ) })}</tbody>
+          </table></div>
+        </Field>
         {manage && <button className="btn" onClick={save}>Save settings</button>}
       </Card>
       <Card title="How registration works">
@@ -382,29 +395,37 @@ function RosterModal({ courseId, manage, onClose }: { courseId: string; manage: 
 export function StudentRegistrationModal({ studentId, manage, onClose }: { studentId: string; manage: boolean; onClose: () => void }) {
   const db = useDB()
   const s = db.users.find((u) => u.id === studentId)!
+  const me = useCurrentUser()!
   return (
     <Modal wide title={`${s.name}: registration for ${db.registration.registrationTerm}`} onClose={onClose}>
+      {(() => { const x = sessionState(db, s.id); return (
+        <div className="row gap wrap">
+          <span className="small">Timed session: {x.state === 'none' ? 'not started' : x.state === 'active' ? `running, ${Math.ceil(x.left / 60000)} min left` : x.state === 'submitted' ? `submitted ${fmtDate(x.at!)}` : 'time ran out'}</span>
+          {manage && x.state !== 'none' && <button className="btn btn-ghost btn-sm" onClick={() => { update((d) => { if (d.registration.sessions) delete d.registration.sessions[s.id] }); notify([s.id], `Your course registration was reopened: you have ${timeLimitMin(db)} minutes again when you start.`, '/registration'); audit(me.id, 'REGISTRATION_RESET', s.name) }}>Reset timer (let the student register again)</button>}
+        </div>
+      ) })()}
       <RegistrationChooser student={s} actor="office" canChange={manage} />
     </Modal>
   )
 }
 
 /** Baskets with Register / Drop, shared by the student page and the office. */
-function RegistrationChooser({ student, actor, canChange }: { student: User; actor: 'student' | 'office'; canChange: boolean }) {
+function RegistrationChooser({ student, actor, canChange, gate = (fn) => fn() }: { student: User; actor: 'student' | 'office'; canChange: boolean; gate?: (fn: () => void) => void }) {
   const db = useDB()
   const me = useCurrentUser()!
-  const settings = db.registration
   const st = registrationStatus(db, student)
-  const need: Record<'FOUNDATION' | 'OPEN_ELECTIVE', number> = { FOUNDATION: settings.minFoundation, OPEN_ELECTIVE: settings.minOpenElective }
+  const need = st.limits
   const mine = (k: 'FOUNDATION' | 'OPEN_ELECTIVE') => (k === 'FOUNDATION' ? st.foundation : st.open)
-  const reg = (c: Course) => {
+  const reg = (c: Course) => gate(() => doReg(c))
+  const doReg = (c: Course) => {
     let err: string | null = null
     update((d) => { err = registerCourse(d, c.id, student.id, me.id, actor === 'office') })
     if (err) return alert(err)
     if (actor === 'office') notify([student.id], `You were registered for ${c.code} ${c.name} by the Registrar of Evaluation`, '/registration')
     audit(me.id, 'COURSE_REGISTER', `${student.name} → ${c.code}`)
   }
-  const drop = (c: Course) => {
+  const drop = (c: Course) => gate(() => doDrop(c))
+  const doDrop = (c: Course) => {
     update((d) => dropCourse(d, c.id, student.id, me.id))
     if (actor === 'office') notify([student.id], `You were dropped from ${c.code} ${c.name}`, '/registration')
     audit(me.id, 'COURSE_DROP', `${student.name} ← ${c.code}`)
@@ -426,7 +447,7 @@ function RegistrationChooser({ student, actor, canChange }: { student: User; act
         const chosen = mine(k)
         const done = chosen.length >= need[k]
         return (
-          <Card key={k} title={`${KIND_LABEL[k]} basket`} action={<Badge tone={done ? 'success' : 'warning'}>{chosen.length}/{need[k]} chosen</Badge>}>
+          <Card key={k} title={`${KIND_LABEL[k]} basket`} action={<Badge tone={done ? 'success' : 'warning'}>Choose {need[k]} · {chosen.length}/{need[k]} chosen</Badge>}>
             {list.length === 0 ? <Empty text="No courses offered to your class in this basket yet." /> : (
               <div className="reg-grid">{list.map((c) => {
                 const on = c.studentIds.includes(student.id)
@@ -444,7 +465,7 @@ function RegistrationChooser({ student, actor, canChange }: { student: User; act
                 )
               })}</div>
             )}
-            {canChange && actor === 'student' && done && list.length > chosen.length && <div className="small muted">To switch, drop your current choice first.</div>}
+            {canChange && actor === 'student' && done && list.length > chosen.length && <div className="small muted">You have chosen {need[k]} course{need[k] === 1 ? '' : 's'}, the limit for your class. To switch, drop one first.</div>}
           </Card>
         )
       })}
@@ -479,14 +500,56 @@ function StudentRegistration() {
   const settings = db.registration
   const closed = !settings.open || (settings.closesAt !== undefined && Date.now() > settings.closesAt)
   const history = db.registrations.filter((r) => r.studentId === me.id).sort((a, b) => b.at - a.at)
+  const [, tick] = useState(0)
+  const ss = sessionState(db, me.id)
+  const st = registrationStatus(db, me)
+  const [asking, setAsking] = useState<(() => void) | null>(null)
+  const minutes = timeLimitMin(db)
+  // Count down once a session is running.
+  useEffect(() => { if (ss.state !== 'active') return; const t = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(t) }, [ss.state])
+  const start = () => {
+    const next = asking
+    update((d) => { d.registration.sessions = { ...d.registration.sessions, [me.id]: { startedAt: Date.now(), endsAt: Date.now() + minutes * 60_000 } } })
+    audit(me.id, 'REGISTRATION_START', `${settings.registrationTerm} · ${minutes} min`)
+    setAsking(null); next?.()
+  }
+  const submit = () => {
+    if (!st.complete && !confirm(`Your registration is not complete yet (${st.foundation.length}/${st.limits.FOUNDATION} foundation, ${st.open.length}/${st.limits.OPEN_ELECTIVE} open elective${st.minCredits ? `, ${st.credits}/${st.minCredits} credits` : ''}). Submit anyway? You cannot change it afterwards.`)) return
+    update((d) => { const x = d.registration.sessions?.[me.id]; if (x) x.submittedAt = Date.now() })
+    notify([me.id], `Registration submitted for ${settings.registrationTerm}: ${[...st.core, ...st.foundation, ...st.open].map((c) => c.code).join(', ')} (${st.credits} credits)`, '/registration')
+    audit(me.id, 'REGISTRATION_SUBMIT', [...st.foundation, ...st.open].map((c) => c.code).join(', '))
+  }
+  const mm = String(Math.floor(ss.left / 60000)).padStart(2, '0'), sec = String(Math.floor((ss.left % 60000) / 1000)).padStart(2, '0')
+  const locked = ss.state === 'submitted' || ss.state === 'expired'
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
   return (
     <>
-      <PageHeader title="Course Registration" subtitle={`Choose your foundation course and open elective for ${settings.registrationTerm}`} />
+      <PageHeader title="Course Registration" subtitle={`Choose your courses for ${settings.registrationTerm}`} />
       <div className={`alert ${closed ? 'alert-warning' : 'alert-success'}`}>
         Registration for <strong>{settings.registrationTerm}</strong> is <strong>{closed ? 'closed' : 'open'}</strong>{settings.closesAt ? ` · last date ${fmtDate(settings.closesAt)}` : ''}.
-        {closed ? ' Contact the Registrar of Evaluation for changes.' : ` Take ${settings.minFoundation} foundation course and ${settings.minOpenElective} open elective${settings.minCredits ? `, at least ${settings.minCredits} credits in total` : ''}${settings.maxCredits ? ` (at most ${settings.maxCredits})` : ''}. Seats are first come, first served.`}
+        {closed ? ' Contact the Registrar of Evaluation for changes.' : ` For your class: ${plural(st.limits.FOUNDATION, 'foundation course')} and ${plural(st.limits.OPEN_ELECTIVE, 'open elective')}${settings.minCredits ? `, at least ${settings.minCredits} credits in total` : ''}${settings.maxCredits ? ` (at most ${settings.maxCredits})` : ''}. Seats are first come, first served.`}
       </div>
-      <RegistrationChooser student={me} actor="student" canChange={!closed} />
+      {ss.state === 'active' && (
+        <div className={`reg-timer ${ss.left < 120_000 ? 'urgent' : ''}`} role="timer" aria-label="Time left">
+          <Clock size={18} /><strong className="timer">{mm}:{sec}</strong><span className="small">left to finish registration</span>
+          <span className="grow" />
+          <Badge tone={st.complete ? 'success' : 'warning'}>{st.complete ? 'All baskets done' : 'Not complete yet'}</Badge>
+          <button className="btn btn-sm" onClick={submit}><Send size={12} /> Submit registration</button>
+        </div>
+      )}
+      {ss.state === 'none' && !closed && <div className="alert alert-info">Look through the courses first. You will have <strong>&nbsp;{minutes} minutes&nbsp;</strong> once you click <strong>&nbsp;Register&nbsp;</strong> on a course.</div>}
+      {locked && <div className="alert alert-info">{ss.state === 'submitted' ? `Registration submitted on ${fmtDate(ss.at!)} at ${new Date(ss.at!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.` : `Your ${minutes} minutes ran out at ${new Date(ss.at!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}; your choices were saved.`} For any change, contact the Registrar of Evaluation.</div>}
+      <RegistrationChooser student={me} actor="student" canChange={!closed && !locked} gate={(fn) => (sessionState(getDB(), me.id).state === 'active' ? fn() : setAsking(() => fn))} />
+      {asking && (
+        <Modal title="Start course registration?" onClose={() => setAsking(null)} footer={<><button className="btn btn-ghost" onClick={() => setAsking(null)}>Go back</button><button className="btn" onClick={start}>OK, start the {minutes} minutes</button></>}>
+          <p>You will have only <strong>{minutes} minutes</strong> to finish your registration.</p>
+          <ul className="small" style={{ paddingLeft: 18, lineHeight: 1.7 }}>
+            <li>Choose {plural(st.limits.FOUNDATION, 'foundation course')} and {plural(st.limits.OPEN_ELECTIVE, 'open elective')}.</li>
+            <li>The timer keeps running even if you leave this page.</li>
+            <li>When the time is up, your choices are saved as they are and registration locks. Submit when you are done.</li>
+          </ul>
+        </Modal>
+      )}
       <Card title="My registration history">
         {history.length === 0 ? <Empty text="No registrations yet." /> : (
           <div className="table-wrap"><table>

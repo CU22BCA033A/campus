@@ -118,7 +118,7 @@ const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3'
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 12,
+    version: 13,
     registrations: [],
     registration: { currentTerm: '', registrationTerm: '', open: false, minFoundation: 1, minOpenElective: 1 },
     examSessions: [],

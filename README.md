@@ -167,6 +167,8 @@ In the demo: **BBA 2024** (Sem 5) is already published, **BCA 2025** (Sem 3) has
 - **Registration window** (settings tab): the term running now, the term students are registering for, the last date, and how many courses each student must take from each basket. *Start term* switches the baskets of the new term live.
 - **Monitoring**: the catalogue shows seats filled per course; *Student registrations* shows every student as Complete / Pending with filters, *Remind pending* and CSV; *Manage* registers or drops courses for a student.
 - Students choose from their baskets on the same page and see their registration history.
+- **Timed registration**: students can look at all courses first; the first *Register* click asks "You will have only 15 minutes…" (*OK* / *Go back*). A countdown then runs (it keeps running if they leave the page); they *Submit*, or when time is up their choices are saved and registration locks. The office sets the minutes and can *Reset timer* for a student.
+- **Courses per basket by class**: the Registrar of Evaluation sets how many foundation and open-elective courses each class must choose (e.g. BCA 2025: 2 foundation, 1 open elective). Students must choose exactly that many and cannot choose more.
 - Each registration stores the student's semester, so foundation and elective results land in the right semester of the transcript, SGPA, class result (a *Foundation / elective* column) and exams. *Result Sheets → University courses* holds their sheets (one per course, students from many classes), and *Examinations → Create exam → University courses* sets their exam.
 
 ## Academic record

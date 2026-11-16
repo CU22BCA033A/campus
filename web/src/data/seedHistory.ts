@@ -121,7 +121,9 @@ export const TERMS = { past: 'Even 2025-26', current: 'Odd 2026-27', next: 'Even
  * published) and next term (registration open, some students registered, one elective nearly full).
  */
 export function addUniversityCourses(db: DB, now: number) {
-  db.registration = { currentTerm: TERMS.current, registrationTerm: TERMS.next, open: true, closesAt: now + 10 * DAY, minFoundation: 1, minOpenElective: 1, minCredits: 12, maxCredits: 26 }
+  db.registration = { currentTerm: TERMS.current, registrationTerm: TERMS.next, open: true, closesAt: now + 10 * DAY, minFoundation: 1, minOpenElective: 1, minCredits: 12, maxCredits: 26, timeLimitMin: 15,
+    // Courses to choose per basket can differ by class.
+    basketLimits: { 'cls-bca-2024-a': { FOUNDATION: 1, OPEN_ELECTIVE: 1 }, 'cls-bca-2025-a': { FOUNDATION: 2, OPEN_ELECTIVE: 1 }, 'cls-bba-2024-a': { FOUNDATION: 1, OPEN_ELECTIVE: 2 } }, sessions: {} }
   db.registrations = []
   const classesFor = (programs: string[]) => db.classes.filter((c) => programs.includes(c.program)).map((c) => c.id)
   const student = (id: string) => db.users.find((u) => u.id === id)!
@@ -197,6 +199,8 @@ export function addUniversityCourses(db: DB, now: number) {
   }
   const picks: [string, string[]][] = [['s1', [n.dt, n.ent]], ['s2', [n.dt, n.cw]], ['s4', [n.env, n.cw]], ['s6', [n.dt]], ['s9', [n.env, n.ent]], ['s14', [n.env, n.cw]], ['s17', [n.dt, n.cw]], ['s19', [n.env, n.py]], ['s22', [n.dt, n.cw]]]
   picks.forEach(([sid, cs], i) => cs.forEach((cid) => reg(cid, sid, (student(sid).semester ?? 1) + 1, TERMS.next, now - (5 - i * 0.4) * DAY)))
+  // Students who registered did it in a timed session and submitted it.
+  picks.forEach(([sid], i) => { const at = now - (5 - i * 0.4) * DAY; db.registration.sessions![sid] = { startedAt: at - 6 * 60_000, endsAt: at + 9 * 60_000, submittedAt: at + 60_000 } })
   // One student changed their mind: a dropped registration stays in the history.
   db.registrations.push({ id: 'reg-drop-s2', courseId: n.ent, studentId: 's2', semester: 6, term: TERMS.next, status: 'DROPPED', at: now - 6 * DAY, by: 's2', droppedAt: now - 5.5 * DAY })
 

@@ -24,6 +24,20 @@ export const eligibleCourses = (db: DB, s: User, kind?: CourseKind) => panCourse
 
 export const activeRegs = (db: DB, studentId: string, term?: string) => db.registrations.filter((r) => r.studentId === studentId && r.status === 'REGISTERED' && (!term || r.term === term))
 
+export type Basket = 'FOUNDATION' | 'OPEN_ELECTIVE'
+/** How many courses a student must choose from a basket: the class's limit, else the default. */
+export const basketLimit = (db: DB, s: User, k: Basket) => db.registration.basketLimits?.[s.classId ?? '']?.[k] ?? (k === 'FOUNDATION' ? db.registration.minFoundation : db.registration.minOpenElective)
+export const timeLimitMin = (db: DB) => db.registration.timeLimitMin ?? 15
+
+/** A student's timed registration session: not started, running (with ms left), submitted, or out of time. */
+export function sessionState(db: DB, sid: string, now = Date.now()) {
+  const s = db.registration.sessions?.[sid]
+  if (!s) return { state: 'none' as const, left: timeLimitMin(db) * 60_000 }
+  if (s.submittedAt) return { state: 'submitted' as const, left: 0, at: s.submittedAt, startedAt: s.startedAt }
+  if (now >= s.endsAt) return { state: 'expired' as const, left: 0, at: s.endsAt, startedAt: s.startedAt }
+  return { state: 'active' as const, left: s.endsAt - now, startedAt: s.startedAt }
+}
+
 /** Where a student stands for the registration term. */
 export function registrationStatus(db: DB, s: User) {
   const term = db.registration.registrationTerm
@@ -35,8 +49,9 @@ export function registrationStatus(db: DB, s: User) {
   const credits = [...core, ...regs].reduce((t, c) => t + c.credits, 0)
   const { minCredits = 0, maxCredits } = db.registration
   const creditsOk = credits >= minCredits
-  const complete = foundation.length >= db.registration.minFoundation && open.length >= db.registration.minOpenElective && creditsOk
-  return { term, nextSem, core, foundation, open, credits, creditsOk, minCredits, maxCredits, overMax: maxCredits !== undefined && credits > maxCredits, complete }
+  const limits = { FOUNDATION: basketLimit(db, s, 'FOUNDATION'), OPEN_ELECTIVE: basketLimit(db, s, 'OPEN_ELECTIVE') }
+  const complete = foundation.length >= limits.FOUNDATION && open.length >= limits.OPEN_ELECTIVE && creditsOk
+  return { term, nextSem, core, foundation, open, credits, creditsOk, minCredits, maxCredits, overMax: maxCredits !== undefined && credits > maxCredits, complete, limits }
 }
 
 /** Register a student in a pan-university course; returns an error message or null. */
@@ -53,6 +68,15 @@ export function registerCourse(d: DB, courseId: string, studentId: string, actor
     c.studentIds.push(studentId)
     d.registrations.push({ id: `reg-${courseId}-${studentId}-${Date.now().toString(36)}`, courseId, studentId, semester: c.semester, term: c.term ?? d.registration.currentTerm, status: 'REGISTERED', at: Date.now(), by: actorId })
     return null
+  }
+  if (!override) {
+    // Students register only inside their timed session, and only as many courses as the basket allows.
+    const ss = sessionState(d, studentId)
+    if (c.term === d.registration.registrationTerm && ss.state !== 'active') return ss.state === 'none' ? 'Start your registration first.' : 'Your registration time is over. Contact the Registrar of Evaluation.'
+    const k = kindOf(c) as Basket
+    const st = registrationStatus(d, s)
+    const have = (k === 'FOUNDATION' ? st.foundation : st.open).length
+    if (c.term === d.registration.registrationTerm && have >= st.limits[k]) return `You can choose only ${st.limits[k]} ${KIND_LABEL[k].toLowerCase()} course(s). Drop one to switch.`
   }
   if (!override && d.registration.maxCredits !== undefined) {
     const st = registrationStatus(d, s)

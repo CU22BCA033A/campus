@@ -309,3 +309,6 @@ tbody tr:hover { background: var(--surface-2); }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
 .pick { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; cursor: pointer; font-size: 13px; }
 .pick.on { border-color: var(--brand); background: var(--brand-light, #f8eaec); }
+.reg-timer { position: sticky; top: 64px; z-index: 25; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; background: var(--info-bg, #e8f0fb); color: var(--info); border: 1px solid currentColor; }
+.reg-timer .timer { font-size: 20px; font-variant-numeric: tabular-nums; }
+.reg-timer.urgent { background: var(--danger-bg, #fde8e8); color: var(--danger); }

@@ -76,8 +76,11 @@ export interface RegistrationSettings {
   registrationTerm: string // students are registering for this term (the next one, or the current one)
   open: boolean
   closesAt?: number
-  minFoundation: number // courses each student must take from each basket
+  minFoundation: number // default courses to choose from each basket…
   minOpenElective: number
+  basketLimits?: Record<string, { FOUNDATION: number; OPEN_ELECTIVE: number }> // …or per class (class id → courses to choose)
+  timeLimitMin?: number // minutes a student has once they start registering (default 15)
+  sessions?: Record<string, { startedAt: number; endsAt: number; submittedAt?: number }> // student id → their timed session
   minCredits?: number // credits a student must register for in a semester
   maxCredits?: number // and may not exceed (the office can override)
 }
