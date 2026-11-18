@@ -31,6 +31,7 @@ import Profile from './pages/Profile'
 import Registration from './pages/Registration'
 import Venues from './pages/Venues'
 import Transport from './pages/Transport'
+import LostFound from './pages/LostFound'
 
 /** Signed-in, active, and allowed (by role/office) to open the current page. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/gate-pass" element={<GatePass />} />
           <Route path="/transport" element={<Transport />} />
           <Route path="/venues" element={<Venues />} />
+          <Route path="/lost-found" element={<LostFound />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/reports" element={<AdminReports />} />
           <Route path="/exams" element={<Exams />} />

@@ -12,6 +12,8 @@ Like the original, modules are chained into gated workflows rather than standing
 - **HR:** staff leave → manager approval → loss-of-pay synced into payroll
 - **No-dues certificate:** a Help Center ticket checks accounts, library and hostel clearance automatically
 
+See **[docs/TECHNICAL_OVERVIEW.md](docs/TECHNICAL_OVERVIEW.md)** for the stack, architecture, concepts, tests and the path to production.
+
 ## Run it
 
 ```bash
@@ -225,7 +227,7 @@ who booked and their phone); it can be reassigned. **Tickets** go to the person 
 
 Venues (auditorium, seminar halls, labs, grounds) have a type, capacity, opening hours, amenities and a
 **manager** chosen by Estate & Facilities. Anyone can see availability on a timeline and book a time range;
-overlapping requests or bookings are refused. Venues that need approval send the request to their manager
+overlapping requests or bookings are refused. Bookings are by time range (from / till), so several people can use a venue on the same day; the free time ranges are shown and can be picked with one click. Venues that need approval send the request to their manager
 (with all details); approval, rejection and cancellation notify the person who booked.
 
 ## Library department
@@ -263,6 +265,15 @@ accepted answers; case and spacing ignored); marks show as soon as the student s
 tests/assignments open in full screen; leaving the screen gives 2 warnings, the 3rd closes the attempt and
 informs the faculty member, who can **allow a re-attempt**. **Make-up** tests/assignments go only to selected
 students (absentees are pre-selected) and their marks count for the original in the result sheet.
+
+## Lost & Found
+
+Anyone (students, faculty, staff) reports a **lost** or **found** item with category, colour, place, date and a photo.
+Each report is compared with the opposite list (category, keywords, colour, place, dates) and owners of
+similar lost reports are notified. Found items handed in to the desk get a **tag number** and storage place;
+owners claim them with proof only the owner would know. The Lost & Found desk (Estate & Facilities, Student
+Affairs) verifies claims, links lost and found reports, records the **handover** with an ID check and a
+printable receipt, and donates or disposes of items unclaimed after 60 days.
 
 ## Manual edits
 

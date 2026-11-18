@@ -118,7 +118,7 @@ const TEACHER: Record<string, string> = { c1: 'f1', c2: 'f2', c3: 'f2', c4: 'f3'
 
 export function createSeed(): DB {
   const seed: DB = {
-    version: 14,
+    version: 15,
     registrations: [],
     registration: { currentTerm: '', registrationTerm: '', open: false, minFoundation: 1, minOpenElective: 1 },
     examSessions: [],
@@ -286,6 +286,15 @@ export function createSeed(): DB {
       { id: 'tr5', userId: 'f3', routeId: 'r2', stop: 'Jakkur', status: 'PENDING', at: d(-0.5) },
     ],
     feedback: [],
+    lostFound: [
+      { id: 'lf1', kind: 'LOST', title: 'Black Redmi Note phone', category: 'Electronics', description: 'Redmi Note 12 with a cracked screen protector and a blue back cover.', color: 'Black', location: 'Library reading hall', date: iso(-2), reportedBy: 's9', status: 'OPEN', claims: [], createdAt: d(-2) },
+      { id: 'lf2', kind: 'FOUND', title: 'Redmi phone with blue cover', category: 'Electronics', description: 'Phone with a blue back cover, screen protector cracked. Found on a reading table.', color: 'Black', location: 'Library, 1st floor', date: iso(-1), reportedBy: 'a7', status: 'OPEN', heldByOffice: true, tagNo: 'LF-2026-001', storage: 'Security desk · Locker 3', claims: [], createdAt: d(-1) },
+      { id: 'lf3', kind: 'FOUND', title: 'Steel water bottle', category: 'Bottle / tiffin', description: 'Milton steel bottle with a “Coding Club” sticker.', color: 'Silver', location: 'Lab-3', date: iso(-5), reportedBy: 'f2', status: 'OPEN', heldByOffice: true, tagNo: 'LF-2026-002', storage: 'Security desk · Shelf B', claims: [{ id: 'lfc1', claimantId: 's5', message: 'It has a Coding Club sticker and my initials A.R. scratched on the cap. I left it in Lab-3 on Friday.', status: 'PENDING', at: d(-1) }], createdAt: d(-5) },
+      { id: 'lf4', kind: 'FOUND', title: 'College ID card – Meera Menon', category: 'ID / cards', description: 'Student ID card found near the canteen.', location: 'Main canteen', date: iso(-12), reportedBy: 'a14', status: 'RETURNED', heldByOffice: true, tagNo: 'LF-2026-003', storage: 'Security desk', claims: [{ id: 'lfc2', claimantId: 's8', message: 'It is my ID card (22BCA008).', status: 'APPROVED', at: d(-11), decidedBy: 'a14' }], handover: { to: 's8', at: d(-11), by: 'a14', idChecked: 'Matched photo with student', remarks: 'Collected in person' }, createdAt: d(-12) },
+      { id: 'lf5', kind: 'LOST', title: 'Casio scientific calculator', category: 'Electronics', description: 'fx-991ES Plus, name written on the back.', color: 'Grey', location: 'Exam Block', date: iso(-3), reportedBy: 's16', status: 'OPEN', claims: [], createdAt: d(-3) },
+      { id: 'lf6', kind: 'FOUND', title: 'Grey hoodie', category: 'Clothing', description: 'Grey hoodie, size M, left on the sports ground bench.', color: 'Grey', location: 'Sports Ground', date: iso(-70), reportedBy: 'a9', status: 'OPEN', heldByOffice: true, tagNo: 'LF-2026-004', storage: 'Store room', claims: [], createdAt: d(-70) },
+      { id: 'lf7', kind: 'LOST', title: 'Room keys with red keychain', category: 'Keys', description: 'Two keys on a red Spider-Man keychain.', color: 'Red', location: 'Aryabhata Hostel', date: iso(-1), reportedBy: 's3', status: 'OPEN', claims: [], createdAt: d(-1) },
+    ],
     venues: [
       { id: 'v-aud', name: 'Main Auditorium', kind: 'Auditorium', capacity: 800, location: 'Admin Block, ground floor', amenities: 'Stage, sound system, projector, green room', managerId: 'a14', needsApproval: true, opens: '08:00', closes: '21:00', active: true },
       { id: 'v-sha', name: 'Seminar Hall A', kind: 'Seminar hall', capacity: 150, location: 'Block B, 1st floor', amenities: 'Projector, podium mic', managerId: 'a14', needsApproval: true, opens: '08:00', closes: '19:00', active: true },

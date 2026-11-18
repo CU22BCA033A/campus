@@ -195,8 +195,8 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Booked today', value: db.bookings.filter((b) => b.date === today && b.status === 'CONFIRMED').length, tone: 'info', to: '/venues' },
           { label: 'Maintenance tickets', value: db.tickets.filter((t) => t.category === 'Maintenance' && !['RESOLVED', 'CLOSED'].includes(t.status)).length, tone: 'danger', to: '/help' },
         ],
-        tasks: [...apptTasks, ...ticketTasks, ...pending.map((b) => ({ text: `Booking request: ${db.venues.find((v) => v.id === b.venueId)?.name}`, sub: `${fmtDate(b.date)} ${b.start}–${b.end} · ${userName(db, b.bookedBy)}`, to: '/venues', tone: 'warning' as const }))],
-        shortcuts: [{ to: '/venues', label: 'Venues & bookings' }, { to: '/help', label: 'Maintenance tickets' }],
+        tasks: [...apptTasks, ...ticketTasks, ...db.lostFound.flatMap((x) => x.claims.filter((c) => c.status === 'PENDING').map((c) => ({ text: `Lost & Found claim: ${x.title}`, sub: `${userName(db, c.claimantId)} · ${x.tagNo ?? ''}`, to: '/lost-found', tone: 'warning' as const }))), ...pending.map((b) => ({ text: `Booking request: ${db.venues.find((v) => v.id === b.venueId)?.name}`, sub: `${fmtDate(b.date)} ${b.start}–${b.end} · ${userName(db, b.bookedBy)}`, to: '/venues', tone: 'warning' as const }))],
+        shortcuts: [{ to: '/venues', label: 'Venues & bookings' }, { to: '/lost-found', label: 'Lost & Found desk' }, { to: '/help', label: 'Maintenance tickets' }],
       }
     }
     case 'admissions': {

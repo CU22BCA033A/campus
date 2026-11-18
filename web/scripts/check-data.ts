@@ -9,7 +9,7 @@ const sets: Record<string, Set<string>> = {
   assignment: new Set(db.assignments.map((x: any) => x.id)), quiz: new Set(db.quizzes.map((x: any) => x.id)), book: new Set(db.books.map((x: any) => x.id)), session: new Set(db.examSessions.map((x: any) => x.id)),
   scholarship: new Set(db.scholarships.map((x: any) => x.id)),
 }
-const U = /^(studentId|userId|authorId|facultyId|staffId|raisedBy|assignedTo|postedBy|createdBy|reviewedBy|markedBy|actorId|publishedBy|evaluatorId|mentorId|wardenId|requestedBy|bookedBy|facultyAdvisorId|ownerFacultyId|by)$/
+const U = /^(claimantId|reportedBy|decidedBy|studentId|userId|authorId|facultyId|staffId|raisedBy|assignedTo|postedBy|createdBy|reviewedBy|markedBy|actorId|publishedBy|evaluatorId|mentorId|wardenId|requestedBy|bookedBy|facultyAdvisorId|ownerFacultyId|by)$/
 const UA = /^(studentIds|present|absent|onLeave|rsvps|members|subscribers|occupants|wardIds|mentees|extraStudentIds|reservations)$/
 const R: Record<string, string> = { courseId: 'course', examId: 'exam', classId: 'class', hostelId: 'hostel', serviceId: 'service', clubId: 'club', assignmentId: 'assignment', quizId: 'quiz', bookId: 'book', sessionId: 'session', scholarshipId: 'scholarship' }
 const bad: string[] = []

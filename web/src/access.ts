@@ -61,7 +61,8 @@ export const ROUTE_ACCESS: Record<string, Persona[]> = {
   '/hostel': ['student', 'hostel', 'super'],
   '/gate-pass': ['student', 'faculty', 'hostel', 'super'],
   '/transport': ['student', 'faculty', 'parent', 'transport', 'super'],
-  '/venues': ['student', ...STAFF], // anyone can request a venue; Estate & Facilities and each venue's manager approve
+  '/venues': ['student', ...STAFF],
+  '/lost-found': ['student', ...STAFF], // anyone can request a venue; Estate & Facilities and each venue's manager approve
   '/hr': STAFF, // everyone on staff applies for leave and sees payslips; approvals/payroll are capabilities
   '/procurement': ['faculty', 'finance', 'registrar', 'super'],
   '/admissions': ['admissions', 'registrar', 'super'],
@@ -105,7 +106,8 @@ const CAPS = {
   createPolls: ['faculty', 'registrar', 'studentAffairs', 'super'],
   bookVenues: ['student', ...STAFF],
   manageAllBookings: ['facilities', 'super'],
-  manageVenues: ['facilities', 'super'], // add venues, assign their managers
+  manageVenues: ['facilities', 'super'],
+  manageLostFound: ['facilities', 'studentAffairs', 'super'], // Lost & Found desk // add venues, assign their managers
   manageTransport: ['transport', 'super'],
   manageServices: ['studentAffairs', 'super'], // assign counsellors / handlers to any service
   routeTickets: ['super'], // default handler per Help Center category

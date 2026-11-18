@@ -16,6 +16,16 @@ const KINDS: Venue['kind'][] = ['Auditorium', 'Seminar hall', 'Conference room',
 export function clashFor(db: DB, venueId: string, date: string, start: string, end: string, ignoreId?: string) {
   return db.bookings.find((b) => b.id !== ignoreId && b.venueId === venueId && b.date === date && ACTIVE.includes(b.status) && toMin(b.start) < toMin(end) && toMin(start) < toMin(b.end))
 }
+/** Free time ranges of a venue on a day (within opening hours), so several people can use it the same day. */
+export function freeRanges(db: DB, v: Venue, date: string, ignoreId?: string) {
+  const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+  const busy = db.bookings.filter((b) => b.id !== ignoreId && b.venueId === v.id && b.date === date && ACTIVE.includes(b.status)).map((b) => [toMin(b.start), toMin(b.end)]).sort((a, b) => a[0] - b[0])
+  const out: { start: string; end: string }[] = []
+  let cur = toMin(v.opens)
+  for (const [s, e] of busy) { if (s > cur) out.push({ start: fmt(cur), end: fmt(s) }); cur = Math.max(cur, e) }
+  if (cur < toMin(v.closes)) out.push({ start: fmt(cur), end: v.closes })
+  return out.filter((r) => toMin(r.end) - toMin(r.start) >= 30)
+}
 /** Who receives a venue's bookings: its manager, or Estate & Facilities when none is assigned. */
 const handlersOf = (db: DB, v: Venue) => (v.managerId ? [v.managerId] : officeUsers(db, 'facilities'))
 
@@ -139,7 +149,8 @@ export default function Venues() {
                         <span className="timeline-closed" style={{ left: 0, width: `${pos(v.opens)}%` }} /><span className="timeline-closed" style={{ left: `${pos(v.closes)}%`, right: 0 }} />
                         {day.map((b) => <span key={b.id} className={`timeline-block ${b.status === 'PENDING' ? 'pending' : ''} ${b.bookedBy === me.id ? 'mine' : ''}`} style={{ left: `${pos(b.start)}%`, width: `${pos(b.end) - pos(b.start)}%` }} title={`${b.start}–${b.end} · ${b.purpose} · ${userName(db, b.bookedBy)} (${b.status.toLowerCase()})`}>{b.start}–{b.end}</span>)}
                       </div>
-                      <button className="btn btn-outline btn-sm" onClick={() => setDraft({ venueId: v.id, date, start: '10:00', end: '12:00' })}>Book</button>
+                      <button className="btn btn-outline btn-sm" disabled={!freeRanges(db, v, date).length} onClick={() => { const f = freeRanges(db, v, date)[0]; setDraft({ venueId: v.id, date, start: f?.start ?? '10:00', end: f ? (toMin(f.end) - toMin(f.start) > 120 ? `${String(Math.floor(toMin(f.start) / 60) + 2).padStart(2, '0')}:${f.start.slice(3)}` : f.end) : '12:00' }) }}>{freeRanges(db, v, date).length ? 'Book' : 'Full'}</button>
+                      <div className="venue-free small" style={{ gridColumn: '2 / 3' }}>{freeRanges(db, v, date).length ? <>Free: {freeRanges(db, v, date).map((r) => `${r.start}–${r.end}`).join(', ')}</> : <span style={{ color: 'var(--danger)' }}>Fully booked this day</span>}</div>
                     </div>
                   )
                 })}
@@ -221,11 +232,17 @@ export default function Venues() {
             {v && <div className="small muted">{v.location} · open {v.opens}–{v.closes} · manager {v.managerId ? userName(db, v.managerId) : 'Estate & Facilities'}{v.needsApproval ? ' · needs approval' : ''}</div>}
             <div className="grid grid-3">
               <Field label="Date"><input className="input" type="date" value={draft.date ?? ''} onChange={(e) => set({ date: e.target.value })} /></Field>
-              <Field label="From"><input className="input" type="time" value={draft.start ?? ''} onChange={(e) => set({ start: e.target.value })} /></Field>
-              <Field label="To"><input className="input" type="time" value={draft.end ?? ''} onChange={(e) => set({ end: e.target.value })} /></Field>
+              <Field label="From (time)"><input className="input" type="time" value={draft.start ?? ''} onChange={(e) => set({ start: e.target.value })} /></Field>
+              <Field label="Till (time)"><input className="input" type="time" value={draft.end ?? ''} onChange={(e) => set({ end: e.target.value })} /></Field>
             </div>
             <Field label="Purpose"><input className="input" value={draft.purpose ?? ''} onChange={(e) => set({ purpose: e.target.value })} placeholder="e.g. Guest lecture, club event" /></Field>
             <Field label="Expected attendees"><input className="input" type="number" min={1} value={draft.attendees ?? ''} onChange={(e) => set({ attendees: e.target.value ? Number(e.target.value) : undefined })} /></Field>
+            {v && draft.date && (() => { const free = freeRanges(db, v, draft.date, draft.id); const taken = db.bookings.filter((b) => b.id !== draft.id && b.venueId === v.id && b.date === draft.date && ACTIVE.includes(b.status)).sort((a, b) => a.start.localeCompare(b.start)); return (
+              <div className="stack" style={{ gap: 6 }}>
+                <div className="small"><strong>Free on {fmtDate(draft.date)}:</strong> {free.length ? free.map((r) => <button key={r.start} type="button" className="chip free-chip" onClick={() => set({ start: r.start, end: toMin(r.end) - toMin(r.start) > 120 ? `${String(Math.floor(toMin(r.start) / 60) + 2).padStart(2, '0')}:${r.start.slice(3)}` : r.end })}>{r.start}–{r.end}</button>) : <span className="muted">fully booked</span>}</div>
+                {taken.length > 0 && <div className="small muted">Already taken: {taken.map((b) => `${b.start}–${b.end} (${b.status === 'PENDING' ? 'requested' : 'booked'})`).join(', ')}. Others can still book the free times.</div>}
+              </div>
+            ) })()}
             {clash ? <div className="alert alert-danger">Not available: {clash.start}–{clash.end} is {clash.status === 'PENDING' ? 'requested' : 'booked'} for “{clash.purpose}”.</div> : v && draft.date && <div className="alert alert-success">Available.</div>}
           </Modal>
         )

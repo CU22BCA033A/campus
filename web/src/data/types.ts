@@ -372,6 +372,7 @@ export interface DB {
   courses: Course[]
   registrations: CourseRegistration[]
   venues: Venue[]
+  lostFound: LostFoundItem[]
   companies: Company[]
   placementPolicy: { oneOffer: boolean; dreamLpa: number } // placed students may only apply to dream offers (≥ dreamLpa)
   librarySettings: LibrarySettings
@@ -673,6 +674,39 @@ export interface PlacementDrive {
   deadline: number
   description: string
   applications: DriveApplication[]
+}
+
+/* ---------------- Lost & Found ---------------- */
+export type LFCategory = 'Electronics' | 'ID / cards' | 'Wallet / money' | 'Keys' | 'Books / notes' | 'Bag' | 'Clothing' | 'Bottle / tiffin' | 'Jewellery / watch' | 'Other'
+export interface LFClaim {
+  id: string
+  claimantId: string
+  message: string // proof: marks, contents, where / when it was lost
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  at: number
+  decidedBy?: string
+  note?: string
+}
+export interface LostFoundItem {
+  id: string
+  kind: 'LOST' | 'FOUND'
+  title: string
+  category: LFCategory
+  description: string
+  color?: string
+  location: string // where it was lost / found
+  date: string // YYYY-MM-DD when lost / found
+  reportedBy: string
+  photo?: string // small image (data URL)
+  status: 'OPEN' | 'MATCHED' | 'RETURNED' | 'CLOSED' | 'DISPOSED'
+  tagNo?: string // found items kept by the office
+  storage?: string // shelf / locker
+  heldByOffice?: boolean // found item handed in to the office
+  matchedWith?: string // linked lost / found report
+  claims: LFClaim[]
+  handover?: { to: string; at: number; by: string; idChecked: string; remarks?: string }
+  closedNote?: string
+  createdAt: number
 }
 
 /* ---------------- Library ---------------- */

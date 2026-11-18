@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, BookOpen, Bus, CalendarDays, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, GraduationCap,
   Home, LogOut, Megaphone, Menu, MessageSquare, PartyPopper, Search, Star, Users, Vote, Building2, UserCog, BarChart3, RotateCcw,
-  ScrollText, School, ListChecks, FileSpreadsheet, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
+  ScrollText, School, ListChecks, PackageSearch, FileSpreadsheet, Library, Briefcase, HandHeart, BedDouble, LifeBuoy, BadgeIndianRupee, Package, UserPlus, History,
 } from 'lucide-react'
 import { logout, resetDemoData, update, useCurrentUser, useDB } from '../data/store'
 import { Avatar } from './ui'
@@ -47,6 +47,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     { to: '/transport', label: 'Transport', icon: Bus },
     { to: '/help', label: 'Help Center', icon: LifeBuoy },
     { to: '/venues', label: 'Venue Booking', icon: Building2 },
+    { to: '/lost-found', label: 'Lost & Found', icon: PackageSearch },
   ] },
   { section: 'Office', items: [
     { to: '/hr', label: 'HR & Payroll', icon: BadgeIndianRupee },

@@ -53,6 +53,7 @@ function RegistrationOffice() {
   const [editing, setEditing] = useState<Partial<Course> | null>(null)
   const [roster, setRoster] = useState<string | null>(null)
   const [managing, setManaging] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
 
   // Catalogue: this term, the registration term, next-semester class courses; earlier terms on request.
   const cf = useFilters(['when', 'kind', 'cls', 'faculty'] as const)
@@ -142,12 +143,11 @@ function RegistrationOffice() {
           <Card>
             {catalogue.length === 0 ? <Empty text="No courses match." /> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Course</th><th>Type</th><th>Offered to</th><th>When</th><th>Faculty</th><th>Credits</th><th>Seats</th><th /></tr></thead>
+                <thead><tr><th>Course</th><th>Type</th><th>When</th><th>Faculty</th><th>Credits</th><th>Seats</th><th /></tr></thead>
                 <tbody>{catalogue.map((c) => (
                   <tr key={c.id}>
-                    <td><strong>{c.code}</strong> {c.name}</td>
+                    <td><button className="link-btn" onClick={() => setInfo(c.id)} title="Details"><strong>{c.code}</strong> {c.name}</button></td>
                     <td><KindBadge c={c} /></td>
-                    <td><OfferedTo db={db} c={c} /></td>
                     <td className="small">{isPan(c) ? c.term : `Semester ${c.semester}`}<div className="muted">{WHEN[whenOf(c) as keyof typeof WHEN].split(':')[0]}</div></td>
                     <td className="small">{userName(db, c.facultyId)}</td>
                     <td>{c.credits}</td>
@@ -198,6 +198,19 @@ function RegistrationOffice() {
       {tab === 'settings' && <SettingsPanel manage={manage} />}
 
       {editing && <CourseEditor draft={editing} onClose={() => setEditing(null)} />}
+      {info && (() => { const c = db.courses.find((x) => x.id === info); return c && (
+        <Modal title={`${c.code} · ${c.name}`} onClose={() => setInfo(null)} footer={<><button className="btn btn-outline" onClick={() => { setInfo(null); setRoster(c.id) }}><Users size={14} /> Students</button>{manage && <button className="btn" onClick={() => { setInfo(null); setEditing(c) }}><Pencil size={14} /> Edit</button>}</>}>
+          <div className="row gap wrap"><KindBadge c={c} />{isPan(c) ? <Badge>{c.term}</Badge> : <Badge>Semester {c.semester}</Badge>}</div>
+          <table><tbody>
+            <tr><td className="muted">Offered to</td><td><OfferedTo db={db} c={c} /></td></tr>
+            <tr><td className="muted">Faculty</td><td>{userName(db, c.facultyId)}</td></tr>
+            <tr><td className="muted">Credits</td><td>{c.credits}</td></tr>
+            <tr><td className="muted">Seats</td><td><Seats c={c} /></td></tr>
+            <tr><td className="muted">Timetable</td><td className="small">{db.timetable.filter((t) => t.courseId === c.id).map((t) => `${['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.day]} ${t.start}–${t.end} (${t.room})`).join(', ') || 'Not scheduled yet'}</td></tr>
+            {c.description && <tr><td className="muted">Description</td><td>{c.description}</td></tr>}
+          </tbody></table>
+        </Modal>
+      ) })()}
       {roster && <RosterModal courseId={roster} manage={manage} onClose={() => setRoster(null)} />}
       {managing && <StudentRegistrationModal studentId={managing} manage={manage} onClose={() => setManaging(null)} />}
     </>
