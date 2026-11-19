@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, BookOpen, Bus, CalendarDays, CalendarCheck, ClipboardList, CreditCard, DoorOpen, FileQuestion, GraduationCap,
@@ -188,7 +188,7 @@ export default function Layout() {
           </div>
         </header>
         <main className="content">
-          <Outlet />
+          <Suspense fallback={<div className="muted" style={{ padding: 24 }}>Loading…</div>}><Outlet /></Suspense>
         </main>
       </div>
     </div>

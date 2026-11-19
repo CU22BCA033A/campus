@@ -154,7 +154,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           ...db.classes.filter((c) => classCourses(db, c).length > 0 && !db.timetable.some((t) => classCourses(db, c).some((co) => co.id === t.courseId))).map((c) => ({ text: `Build the timetable: ${classLabel(c)}`, to: '/timetable', tone: 'warning' as const })),
           ...apptTasks,
         ],
-        shortcuts: [{ to: '/registration', label: 'Course registration' }, { to: '/results', label: 'Result sheets' }, { to: '/timetable', label: 'Timetable' }, { to: '/attendance', label: 'Attendance' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
+        shortcuts: [{ to: '/registration', label: 'Course registration' }, { to: '/results', label: 'Result sheets' }, { to: '/timetable', label: 'Timetable' }, { to: '/attendance', label: 'Attendance' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/grades', label: 'Gradebook' }],
       }
     }
     case 'library': {

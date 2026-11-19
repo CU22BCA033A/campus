@@ -181,7 +181,7 @@ export function AuditLog() {
     { key: 'user' as const, label: 'Users', options: opts(db.audit.map((a) => a.actorId), (id) => db.users.find((u) => u.id === id)?.name ?? id) },
     { key: 'when' as const, label: 'Dates', options: [{ value: '1', label: 'Last 24 hours' }, { value: '7', label: 'Last 7 days' }, { value: '30', label: 'Last 30 days' }] },
   ]
-  const now = Date.now()
+  const [now] = useState(() => Date.now()) // fixed at mount so filtering is stable across renders
   const rows = db.audit.filter((a) => af.ok('action', a.action) && af.ok('user', a.actorId) && (!af.values.when || now - a.at <= Number(af.values.when) * DAY)).filter((a) => (a.action + a.detail + (db.users.find((u) => u.id === a.actorId)?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
   const exportCsv = () => {
     const lines = [['Time', 'User', 'Action', 'Detail'], ...rows.map((a) => [new Date(a.at).toISOString(), db.users.find((u) => u.id === a.actorId)?.name ?? a.actorId, a.action, `"${a.detail.replace(/"/g, '""')}"`])]

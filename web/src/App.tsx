@@ -1,37 +1,48 @@
+import { lazy, Suspense } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { canAccess } from './access'
 import { useCurrentUser } from './data/store'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Home from './pages/Home'
-import Timetable from './pages/Timetable'
-import { CourseDetail, Courses } from './pages/Courses'
-import Assignments from './pages/Assignments'
-import Quizzes from './pages/Quizzes'
-import Attendance from './pages/Attendance'
-import Grades from './pages/Grades'
-import Feedback from './pages/Feedback'
-import Feed from './pages/Feed'
-import { Clubs, Events, Notices, Polls } from './pages/Campus'
-import { Fees, GatePass } from './pages/Services'
-import { AdminReports, AdminUsers, AuditLog } from './pages/Admin'
-import Admissions, { ApplyForm } from './pages/Admissions'
-import Exams from './pages/Exams'
-import Hostel from './pages/Hostel'
-import HR from './pages/HR'
-import Procurement from './pages/Procurement'
-import HelpCenter from './pages/HelpCenter'
-import Placements from './pages/Placements'
-import LibraryPage from './pages/Library'
-import Alumni from './pages/Alumni'
-import Classes from './pages/Classes'
-import Person from './pages/People'
-import Results from './pages/Results'
-import Profile from './pages/Profile'
-import Registration from './pages/Registration'
-import Venues from './pages/Venues'
-import Transport from './pages/Transport'
-import LostFound from './pages/LostFound'
+
+// Pages load on demand (one small chunk each) so the first screen downloads faster.
+const Timetable = lazy(() => import('./pages/Timetable'))
+const CourseDetail = lazy(() => import('./pages/Courses').then((m) => ({ default: m.CourseDetail })))
+const Courses = lazy(() => import('./pages/Courses').then((m) => ({ default: m.Courses })))
+const Assignments = lazy(() => import('./pages/Assignments'))
+const Quizzes = lazy(() => import('./pages/Quizzes'))
+const Attendance = lazy(() => import('./pages/Attendance'))
+const Grades = lazy(() => import('./pages/Grades'))
+const Feedback = lazy(() => import('./pages/Feedback'))
+const Feed = lazy(() => import('./pages/Feed'))
+const Clubs = lazy(() => import('./pages/Campus').then((m) => ({ default: m.Clubs })))
+const Events = lazy(() => import('./pages/Campus').then((m) => ({ default: m.Events })))
+const Notices = lazy(() => import('./pages/Campus').then((m) => ({ default: m.Notices })))
+const Polls = lazy(() => import('./pages/Campus').then((m) => ({ default: m.Polls })))
+const Fees = lazy(() => import('./pages/Services').then((m) => ({ default: m.Fees })))
+const GatePass = lazy(() => import('./pages/Services').then((m) => ({ default: m.GatePass })))
+const AdminReports = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminReports })))
+const AdminUsers = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminUsers })))
+const AuditLog = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AuditLog })))
+const Admissions = lazy(() => import('./pages/Admissions'))
+const ApplyForm = lazy(() => import('./pages/Admissions').then((m) => ({ default: m.ApplyForm })))
+const Exams = lazy(() => import('./pages/Exams'))
+const Hostel = lazy(() => import('./pages/Hostel'))
+const HR = lazy(() => import('./pages/HR'))
+const Procurement = lazy(() => import('./pages/Procurement'))
+const HelpCenter = lazy(() => import('./pages/HelpCenter'))
+const Placements = lazy(() => import('./pages/Placements'))
+const LibraryPage = lazy(() => import('./pages/Library'))
+const Alumni = lazy(() => import('./pages/Alumni'))
+const Classes = lazy(() => import('./pages/Classes'))
+const Person = lazy(() => import('./pages/People'))
+const Results = lazy(() => import('./pages/Results'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Registration = lazy(() => import('./pages/Registration'))
+const Venues = lazy(() => import('./pages/Venues'))
+const Transport = lazy(() => import('./pages/Transport'))
+const LostFound = lazy(() => import('./pages/LostFound'))
 
 /** Signed-in, active, and allowed (by role/office) to open the current page. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -49,7 +60,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/home" replace /> : <Login />} />
-        <Route path="/apply" element={<ApplyForm />} />
+        <Route path="/apply" element={<Suspense fallback={null}><ApplyForm /></Suspense>} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route path="/home" element={<Home />} />
           <Route path="/timetable" element={<Timetable />} />

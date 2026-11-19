@@ -407,7 +407,8 @@ function NightRollCallPanel({ hostelId, term }: { hostelId: string; term: string
     }
     audit(user.id, 'HOSTEL_NIGHT_ROLL', `${db.hostels.find((h) => h.id === hostelId)?.name} ${date}: ${counts.PRESENT} in, ${counts.LEAVE} on leave, ${counts.ABSENT} absent`)
   }
-  const last30 = db.nightAttendance.filter((n) => n.hostelId === hostelId && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10))
+  const [openedAt] = useState(() => Date.now())
+  const last30 = db.nightAttendance.filter((n) => n.hostelId === hostelId && n.date > new Date(openedAt - 30 * 86_400_000).toISOString().slice(0, 10))
   const absences = (sid: string) => last30.filter((n) => n.absent.includes(sid)).length
 
   return (

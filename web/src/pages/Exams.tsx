@@ -54,13 +54,16 @@ export function StudentExams({ studentId, readOnly = false }: { studentId: strin
     <>
       {!readOnly && <PageHeader title="Examinations" subtitle="Schedule, eligibility, results and re-evaluation" />}
       {!readOnly && upcomingSessions.map((s) => <div key={s.id} className={`alert ${s.ticketsIssuedAt ? 'alert-success' : 'alert-info'}`}>{s.title}: {s.ticketsIssuedAt ? `hall ticket issued on ${fmtDate(s.ticketsIssuedAt)}. Collect it from the Registrar of Evaluation office.` : 'hall tickets are issued by the Registrar of Evaluation office before the exam.'}</div>)}
-      <div className="grid grid-4">
+      {/* Parents already see CGPA and results above this card: show only the schedule there. */}
+      <div className={`grid ${readOnly ? 'grid-2' : 'grid-4'}`}>
         <Stat label="Upcoming exams" value={upcoming.length} tone="info" />
         <Stat label="Eligible" value={`${elig.filter((x) => x.eligible).length}/${elig.length}`} tone={allEligible ? 'success' : 'danger'} />
+        {!readOnly && <>
         <Stat label={lastSem ? `SGPA (Sem ${lastSem})` : 'SGPA'} value={sgpa !== null ? sgpa.toFixed(2) : '—'} tone="brand" hint={(student.backlogCourses?.length ?? 0) ? `${student.backlogCourses!.length} backlog course(s)` : undefined} />
         <Stat label="CGPA" value={fmtCgpa(cgpaOf(db, student))} tone="accent" hint={`${backlogCountOf(student)} backlog(s)`} />
+        </>}
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'schedule', label: 'Schedule & eligibility' }, { id: 'results', label: 'Results', count: results.length }, ...(!readOnly ? [{ id: 'reval' as const, label: 'Re-evaluation' }] : [])]} />
+      {!readOnly && <Tabs value={tab} onChange={setTab} tabs={[{ id: 'schedule', label: 'Schedule & eligibility' }, { id: 'results', label: 'Results', count: results.length }, { id: 'reval' as const, label: 'Re-evaluation' }]} />}
       {tab === 'schedule' && (
         <Card>
           {elig.length === 0 ? <Empty text="No upcoming exams." /> : (

@@ -122,8 +122,8 @@ functions, so they can move to (or be shared with) a server.
   notifications; **payment gateway** integration for fees (the UI flow exists).
 - **Deployment**: static front end on a CDN, API in containers, CI running lint, type-check, data check and
   the Playwright suites on every change.
-- Performance: route-level code splitting (the app is currently one ~700 kB bundle) and server-side
-  pagination for large lists.
+- Performance: pages are already code-split (`React.lazy`, one chunk per page, ~140 kB app entry); next is
+  server-side pagination for large lists.
 
 ## 6. How it was built (AI-assisted development)
 
