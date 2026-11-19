@@ -275,6 +275,24 @@ owners claim them with proof only the owner would know. The Lost & Found desk (E
 Affairs) verifies claims, links lost and found reports, records the **handover** with an ID check and a
 printable receipt, and donates or disposes of items unclaimed after 60 days.
 
+## "Needs your attention" on every home page
+
+Each person's home page lists what they should act on, computed live from the records (`web/src/todo.ts`,
+`OfficeHome.tsx`):
+
+- **Student**: course registration open or a timer running, fees due and the exam papers they will block,
+  courses below 75% attendance, withheld papers, hall tickets, tests closing soon, library books due or overdue
+  and fines, pending hostel leave or bus pass, placement offers to answer and interviews, Lost & Found matches
+  and items to collect, upcoming appointments.
+- **Parent**: the same list for the ward (read-only), above attendance and fees.
+- **Faculty**: today's classes not yet marked, result sheets waiting for marks, submissions to mark,
+  proctoring alerts, mentees at risk (low attendance or backlogs), venue requests for venues they manage.
+- **Offices**: Registrar of Evaluation (students yet to register, seating per exam session, attendance shortage),
+  Finance (students who will be barred from exams for unpaid fees), Library (reservations to hold, fines to
+  collect), Placement (drives and interviews coming up, offers not answered), Student Affairs and Facilities
+  (Lost & Found claims), counsellors and other service handlers (their sessions for the next two days).
+- Allotting a hostel room now adds that semester's hostel fee to the student's account automatically.
+
 ## Manual edits
 
 Every office can correct records by hand: edit / delete buttons on courses and registrations (any time,

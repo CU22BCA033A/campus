@@ -3,11 +3,12 @@ import { ArrowRight, Megaphone } from 'lucide-react'
 import { useCurrentUser, useDB } from '../data/store'
 import { Badge, Card, Empty, Stat } from '../components/ui'
 import { OFFICES, persona, TICKET_OFFICE } from '../access'
-import { attendanceStats, feeOutstanding, fmtDate, fmtDateTime, inr, timeAgo, userName } from '../lib'
+import { attendanceStats, coursesFor, feeOutstanding, fmtDate, fmtDateTime, inr, studentDues, timeAgo, userName } from '../lib'
 import { classCourses, classLabel, classResults } from '../classes'
 import { waitingList } from '../hostels'
 import type { DB, Office, User } from '../data/types'
-import { fineDue } from '../library'
+import { available, fineDue, memberDues } from '../library'
+import { registrationStatus } from '../registration'
 
 interface Task { text: string; sub?: string; to: string; tone?: 'warning' | 'danger' | 'info' }
 interface OfficeView {
@@ -22,7 +23,9 @@ function view(db: DB, office: Office, user?: User): OfficeView {
   const tickets = db.tickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status) && (office === 'super' || TICKET_OFFICE[t.category] === office))
   const ticketTasks: Task[] = tickets.map((t) => ({ text: `${t.number}: ${t.subject}`, sub: `${t.category} · ${timeAgo(t.createdAt)}`, to: '/help', tone: t.priority === 'High' ? 'danger' : 'info' }))
   const students = db.users.filter((u) => u.role === 'student')
-  const apptTasks: Task[] = db.appointments.filter((a) => a.status === 'REQUESTED' && db.services.some((sv) => sv.id === a.serviceId && (office === 'super' || sv.office === office))).map((a) => { const sv = db.services.find((x) => x.id === a.serviceId)!; return { text: `Appointment request: ${sv.title}`, sub: `${sv.confidential ? 'Confidential' : userName(db, a.studentId)} · ${fmtDateTime(a.at)}`, to: '/help', tone: 'warning' as const } })
+  // Requests to accept, plus this handler's own confirmed sessions in the next 2 days (e.g. the counsellor's day)
+  const mySessions: Task[] = user ? db.appointments.filter((a) => a.status === 'CONFIRMED' && a.assignedTo === user.id && a.at > now() - 3_600_000 && a.at - now() < 2 * 86_400_000).sort((a, b) => a.at - b.at).map((a) => { const sv = db.services.find((x) => x.id === a.serviceId); return { text: `Session: ${sv?.title ?? 'Appointment'}`, sub: `${fmtDateTime(a.at)} · ${userName(db, a.studentId)}${a.note ? ` · ${a.note}` : ''}`, to: '/help', tone: 'info' as const } }) : []
+  const apptTasks: Task[] = db.appointments.filter((a) => a.status === 'REQUESTED' && db.services.some((sv) => sv.id === a.serviceId && (office === 'super' || sv.office === office))).map((a) => { const sv = db.services.find((x) => x.id === a.serviceId)!; return { text: `Appointment request: ${sv.title}`, sub: `${sv.confidential ? 'Confidential' : userName(db, a.studentId)} · ${fmtDateTime(a.at)}`, to: '/help', tone: 'warning' as const } as Task }).concat(mySessions)
 
   switch (office) {
     case 'registrar': {
@@ -53,6 +56,9 @@ function view(db: DB, office: Office, user?: User): OfficeView {
       const overdue = db.fees.filter((f) => feeOutstanding(f) > 0 && f.dueAt < now())
       const refunds = db.refunds.filter((r) => r.status === 'REQUESTED' || r.status === 'APPROVED')
       const prs = db.purchaseRequests.filter((p) => p.status === 'PENDING_FINANCE' || p.status === 'APPROVED' || p.status === 'PO_ISSUED')
+      // Students whose unpaid fees will bar them from upcoming exam papers.
+      const todayF = new Date().toISOString().slice(0, 10)
+      const barred = students.filter((st) => st.status === 'ACTIVE' && studentDues(db, st.id) > 0 && db.exams.some((e) => !e.resultsPublished && e.requireFeesCleared && e.date >= todayF && db.courses.find((c) => c.id === e.courseId)?.studentIds.includes(st.id)))
       return {
         stats: [
           { label: 'Collected', value: inr(collected), tone: 'success', to: '/fees' },
@@ -61,6 +67,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Purchase actions', value: prs.length, tone: 'info', to: '/procurement' },
         ],
         tasks: [
+          ...(barred.length ? [{ text: `${barred.length} student(s) will be barred from exams for unpaid fees`, sub: `${inr(barred.reduce((t, st) => t + studentDues(db, st.id), 0))} outstanding · send reminders from Fee collection`, to: '/fees', tone: 'danger' as const }] : []),
           ...refunds.map((r) => ({ text: `Refund ${r.status === 'REQUESTED' ? 'request' : 'to process'}: ${userName(db, r.studentId)}`, sub: inr(r.amount), to: '/fees', tone: 'warning' as const })),
           ...prs.map((p) => ({ text: `${p.status === 'PENDING_FINANCE' ? 'Finance approval' : p.status === 'APPROVED' ? 'Issue PO' : 'Receive consignment'}: ${p.title}`, sub: inr(p.quantity * p.unitCost), to: '/procurement', tone: 'info' as const })),
           ...(overdue.length ? [{ text: `${overdue.length} overdue fee item(s): send reminders`, to: '/fees', tone: 'danger' as const }] : []),
@@ -118,20 +125,27 @@ function view(db: DB, office: Office, user?: User): OfficeView {
     }
     case 'exam': {
       const upcoming = db.exams.filter((e) => !e.resultsPublished)
-      const noSeating = upcoming.filter((e) => !e.seating)
+      const todayIso = new Date().toISOString().slice(0, 10)
+      // Seating matters only for papers still to be written.
+      const noSeating = upcoming.filter((e) => !e.seating && e.date >= todayIso)
       const toPublish = upcoming.filter((e) => db.results.some((r) => r.examId === e.id))
       const reval = db.revaluations.filter((r) => r.status === 'REQUESTED')
-      const short = students.filter((s) => attendanceStats(db, s.id).pct < 75)
+      // A shortage in any one course withholds that exam, so count students short in any course.
+      const short = students.filter((s) => s.status === 'ACTIVE' && coursesFor(db, s).some((c) => { const a = attendanceStats(db, s.id, c.id); return a.total >= 4 && a.pct < 75 }))
+      const regPending = db.registration.open ? students.filter((s) => s.status === 'ACTIVE' && s.classId && !registrationStatus(db, s).complete) : []
       return {
         stats: [
           { label: 'Upcoming exams', value: upcoming.length, to: '/exams' },
           { label: 'Seating not generated', value: noSeating.length, tone: 'warning', to: '/exams' },
           { label: 'Re-evaluation requests', value: reval.length, tone: 'accent', to: '/exams' },
-          { label: 'Attendance shortage', value: short.length, tone: 'danger', hint: 'students below 75%', to: '/attendance' },
+          { label: 'Attendance shortage', value: short.length, tone: 'danger', hint: 'students below 75% in a course', to: '/attendance' },
         ],
         tasks: [
-          ...noSeating.map((e) => ({ text: `Generate seating: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, sub: fmtDate(e.date), to: '/exams', tone: 'warning' as const })),
-          ...toPublish.map((e) => ({ text: `Publish results: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, to: '/exams', tone: 'info' as const })),
+          ...(regPending.length ? [{ text: `${regPending.length} student(s) have not completed course registration`, sub: `${db.registration.registrationTerm}${db.registration.closesAt ? ` · closes ${fmtDate(db.registration.closesAt)}` : ''}`, to: '/registration', tone: 'warning' as const }] : []),
+          // One row per exam session (not per paper).
+          ...[...new Set(noSeating.map((e) => e.sessionId ?? e.id))].map((sid) => { const ps = noSeating.filter((e) => (e.sessionId ?? e.id) === sid).sort((a, b) => a.date.localeCompare(b.date)); const ses = db.examSessions.find((x) => x.id === sid); return { text: `Generate seating: ${ses?.title ?? ps[0].title}`, sub: `${ses?.classId ? classLabel(db.classes.find((c) => c.id === ses.classId)) : 'Several classes'} · ${ps.length} paper(s) from ${fmtDate(ps[0].date)}`, to: '/exams', tone: 'warning' as const } }),
+          // Papers with marks but no result sheet (sheets are handled by the review rows below).
+          ...toPublish.filter((e) => !db.resultSheets.some((sh) => sh.examId === e.id)).map((e) => ({ text: `Publish results: ${db.courses.find((c) => c.id === e.courseId)?.code} ${e.title}`, to: '/exams', tone: 'info' as const })),
           ...reval.map((r) => ({ text: `Re-evaluation: ${userName(db, r.studentId)}`, sub: r.reason, to: '/exams' })),
           ...db.resultSheets.filter((sh) => sh.status === 'SUBMITTED').map((sh) => ({ text: `Review & publish: ${db.courses.find((c) => c.id === sh.courseId)?.code} result sheet`, sub: `Submitted by ${userName(db, sh.evaluatorId)}`, to: '/results', tone: 'warning' as const })),
           ...(db.users.some((u) => u.backlogCourses?.length) ? [{ text: `${db.users.filter((u) => u.backlogCourses?.length).length} student(s) with backlogs: register for re-exams`, to: '/results', tone: 'info' as const }] : []),
@@ -140,7 +154,7 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           ...db.classes.filter((c) => classCourses(db, c).length > 0 && !db.timetable.some((t) => classCourses(db, c).some((co) => co.id === t.courseId))).map((c) => ({ text: `Build the timetable: ${classLabel(c)}`, to: '/timetable', tone: 'warning' as const })),
           ...apptTasks,
         ],
-        shortcuts: [{ to: '/results', label: 'Result sheets' }, { to: '/timetable', label: 'Timetable' }, { to: '/attendance', label: 'Attendance' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
+        shortcuts: [{ to: '/registration', label: 'Course registration' }, { to: '/results', label: 'Result sheets' }, { to: '/timetable', label: 'Timetable' }, { to: '/attendance', label: 'Attendance' }, { to: '/classes', label: 'Classes & promotion' }, { to: '/exams', label: 'Examinations' }, { to: '/attendance', label: 'Attendance' }, { to: '/grades', label: 'Gradebook' }, { to: '/timetable', label: 'Timetable' }],
       }
     }
     case 'library': {
@@ -153,7 +167,12 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Overdue', value: overdue.length, tone: 'danger', to: '/library' },
           { label: 'Unpaid fines', value: inr(db.loans.reduce((t, l) => t + fineDue(db, l), 0)), tone: 'accent', to: '/library' },
         ],
-        tasks: [...apptTasks, ...overdue.map((l) => ({ text: `Overdue: ${db.books.find((b) => b.id === l.bookId)?.title}`, sub: `${userName(db, l.userId)} · due ${fmtDate(l.dueAt)}`, to: '/library', tone: 'danger' as const }))],
+        tasks: [...apptTasks,
+          // A reserved title has a copy on the shelf: hold it for the first person in the queue
+          ...db.books.filter((b) => b.reservations.length && available(db, b) > 0).map((b) => ({ text: `Hold for reservation: ${b.title}`, sub: `${userName(db, b.reservations[0])} is first in the queue · ${available(db, b)} cop${available(db, b) === 1 ? 'y' : 'ies'} on the shelf`, to: '/library', tone: 'warning' as const })),
+          // Returned with a fine that is still unpaid (overdue loans are listed below)
+          ...[...new Set(db.loans.filter((l) => l.returnedAt && fineDue(db, l) > 0).map((l) => l.userId))].map((uid) => ({ text: `Collect fine: ${userName(db, uid)}`, sub: `${inr(memberDues(db, uid))} unpaid${db.users.find((u) => u.id === uid)?.role === 'student' ? ' · borrowing blocked' : ''}`, to: '/library', tone: 'warning' as const })),
+          ...overdue.map((l) => ({ text: `Overdue: ${db.books.find((b) => b.id === l.bookId)?.title}`, sub: `${userName(db, l.userId)} · due ${fmtDate(l.dueAt)}`, to: '/library', tone: 'danger' as const }))],
         shortcuts: [{ to: '/library', label: 'Catalogue & issue desk' }],
       }
     }
@@ -168,7 +187,12 @@ function view(db: DB, office: Office, user?: User): OfficeView {
           { label: 'Students placed', value: `${placed.size}/${students.length}`, tone: 'success', to: '/placements' },
           { label: 'Alumni mentors', value: db.alumni.filter((a) => a.mentor).length, tone: 'info', to: '/alumni' },
         ],
-        tasks: [...apptTasks, ...applied.map(({ d, a }) => ({ text: `Screen ${userName(db, a.studentId)} for ${d.company}`, sub: d.role, to: '/placements', tone: 'warning' as const }))],
+        tasks: [...apptTasks,
+          // Drives happening in the next 3 days, interviews in the next 2 days, offers students have not answered
+          ...db.drives.filter((d) => d.driveDate && d.driveDate > now() && d.driveDate - now() < 3 * 86_400_000).map((d) => ({ text: `Drive coming up: ${d.company}`, sub: `${d.role} · ${fmtDateTime(d.driveDate!)}${d.venue ? ` · ${d.venue}` : ''} · ${d.applications.filter((a) => a.status !== 'REJECTED').length} candidate(s)`, to: '/placements', tone: 'info' as const })),
+          ...db.drives.flatMap((d) => d.applications.filter((a) => a.status === 'INTERVIEW' && a.slot && a.slot > now() && a.slot - now() < 2 * 86_400_000).map((a) => ({ text: `Interview: ${userName(db, a.studentId)} with ${d.company}`, sub: fmtDateTime(a.slot!), to: '/placements', tone: 'info' as const }))),
+          ...db.drives.flatMap((d) => d.applications.filter((a) => a.offer === 'OFFERED').map((a) => ({ text: `Offer not yet answered: ${userName(db, a.studentId)}`, sub: `${d.company} · ${d.role} · follow up with the student`, to: '/placements', tone: 'warning' as const }))),
+          ...applied.map(({ d, a }) => ({ text: `Screen ${userName(db, a.studentId)} for ${d.company}`, sub: d.role, to: '/placements', tone: 'warning' as const }))],
         shortcuts: [{ to: '/placements', label: 'Drives' }, { to: '/alumni', label: 'Alumni network' }],
       }
     }
@@ -231,9 +255,10 @@ function view(db: DB, office: Office, user?: User): OfficeView {
         tasks: [
           ...apptTasks,
           ...ticketTasks,
+          ...db.lostFound.flatMap((x) => x.claims.filter((c) => c.status === 'PENDING').map((c) => ({ text: `Lost & Found claim: ${x.title}`, sub: `${userName(db, c.claimantId)} · verify ownership`, to: '/lost-found', tone: 'warning' as const }))),
           ...db.clubs.filter((c) => c.active !== false && c.members.length === 0).map((c) => ({ text: `No members yet: ${c.name}`, sub: 'Promote the club or archive it', to: '/clubs' })),
         ],
-        shortcuts: [{ to: '/clubs', label: 'Clubs & chapters' }, { to: '/events', label: 'Events' }, { to: '/polls', label: 'Polls & surveys' }, { to: '/help', label: 'Counselling & grievances' }],
+        shortcuts: [{ to: '/clubs', label: 'Clubs & chapters' }, { to: '/events', label: 'Events' }, { to: '/polls', label: 'Polls & surveys' }, { to: '/help', label: 'Counselling & grievances' }, { to: '/lost-found', label: 'Lost & Found' }],
       }
     }
     default: {
@@ -287,7 +312,7 @@ export default function OfficeHome() {
         <div className="stack">
           <Card title="Your modules">
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
-              {v.shortcuts.map((s) => <Link key={s.to} to={s.to} className="btn btn-outline" style={{ justifyContent: 'space-between', whiteSpace: 'normal', textAlign: 'left' }}>{s.label} <ArrowRight size={14} /></Link>)}
+              {v.shortcuts.filter((s, i, all) => all.findIndex((x) => x.to === s.to) === i).map((s) => <Link key={s.to} to={s.to} className="btn btn-outline" style={{ justifyContent: 'space-between', whiteSpace: 'normal', textAlign: 'left' }}>{s.label} <ArrowRight size={14} /></Link>)}
             </div>
           </Card>
           <Card title="Latest notices" action={<Link to="/notices" className="small">Notice board</Link>}>

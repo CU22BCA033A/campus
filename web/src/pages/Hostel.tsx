@@ -141,8 +141,12 @@ function HostelAdmin() {
       d.rooms.forEach((x) => { x.occupants = x.occupants.filter((o) => o !== studentId); if (x.beds) delete x.beds[studentId] })
       const room = d.rooms.find((x) => x.id === roomId)!
       room.occupants.push(studentId); room.beds = { ...(room.beds ?? {}), [studentId]: letter }
+      // The room's semester fee goes to Finance (once per semester).
+      const st = d.users.find((u) => u.id === studentId)
+      const title = `Hostel fee – Semester ${st?.semester ?? ''}`
+      if (room.feePerSem && !d.fees.some((f) => f.studentId === studentId && f.head === 'Hostel' && f.title === title)) d.fees.push({ id: uid('fee'), studentId, title, amount: room.feePerSem, dueAt: Date.now() + 15 * 86_400_000, head: 'Hostel' })
     })
-    notify([studentId], `Hostel room ${r.number}, Bed ${letter} in ${hostel.name} allotted`, '/hostel')
+    notify([studentId, ...db.users.filter((u) => u.role === 'parent' && u.wardIds?.includes(studentId)).map((u) => u.id)], `Hostel room ${r.number}, Bed ${letter} in ${hostel.name} allotted${r.feePerSem ? `; hostel fee ${inr(r.feePerSem)} added to fees` : ''}`, '/hostel')
     audit(user.id, 'HOSTEL_ALLOT', `${userName(db, studentId)} → ${hostel.name} ${r.number} bed ${letter}`)
   }
   /** Conflict-free bulk allocation within this hostel: waiting-list students into free beds. */

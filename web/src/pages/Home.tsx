@@ -6,6 +6,8 @@ import { attendanceStats, courseName, coursesFor, DAYS, fmtDate, fmtDateTime, in
 import ParentHome from './Parent'
 import { cgpaOf, fmtCgpa } from '../academics'
 import OfficeHome from './OfficeHome'
+import TodoCard from '../components/TodoCard'
+import { facultyTodos, studentTodos } from '../todo'
 
 export default function Home() {
   const user = useCurrentUser()!
@@ -42,6 +44,8 @@ function StaffStudentHome() {
 
       {user.role === 'student' && <StudentStats />}
       {user.role === 'faculty' && <FacultyStats />}
+      {user.role === 'student' && <TodoCard todos={studentTodos(db, user)} empty="Nothing needs your attention right now." />}
+      {user.role === 'faculty' && <TodoCard todos={facultyTodos(db, user)} empty="Nothing is waiting on you right now." />}
 
       <div className="grid grid-2">
         <Card title={`Today's classes · ${DAYS[today]}`} action={<Link to="/timetable" className="small">Full timetable</Link>}>

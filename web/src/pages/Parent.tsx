@@ -8,6 +8,8 @@ import { bedOf, wardensFor } from '../hostels'
 import { backlogCountOf, cgpaOf, fmtCgpa } from '../academics'
 import { StudentExams } from './Exams'
 import { Transcript } from './Grades'
+import TodoCard from '../components/TodoCard'
+import { studentTodos } from '../todo'
 
 /** Parent portal: one login, several wards (children). */
 export default function ParentHome() {
@@ -54,6 +56,7 @@ export default function ParentHome() {
         <Stat label="Fees due" value={inr(due.reduce((s, f) => s + feeOutstanding(f), 0))} tone={due.length ? 'danger' : 'success'} icon={<CreditCard size={22} />} />
         <Stat label="Hostel" value={room ? `${room.number} · Bed ${bedOf(room, ward.id)}` : 'Day scholar'} hint={room ? `${db.hostels.find((h) => h.id === room.hostelId)?.name ?? ''}${(() => { const abs = db.nightAttendance.filter((n) => n.absent.includes(ward.id) && n.date > new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)).length; return abs ? ` · ${abs} night absence(s) in 30 days` : ' · present at night roll calls' })()}` : undefined} tone="accent" icon={<BedDouble size={22} />} />
       </div>
+      <TodoCard title={`What needs attention for ${ward.name.split(' ')[0]}`} todos={studentTodos(db, ward)} linkable={false} empty="Nothing needs attention right now." />
       <div className="grid grid-2">
         <Card title="Course-wise attendance">
           <div className="list">
